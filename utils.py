@@ -1,14 +1,14 @@
+import argparse
 import glob
 import os
 import shutil
-import argparse
+from typing import Any, List, Union
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import yaml
 
 from loggers import logger
-from typing import List, Union, Any
 
 
 def load_yaml(path: str, subsection: str) -> dict[str, Any]:
@@ -300,7 +300,9 @@ def get_best_levels_prices_and_labels(
     """
 
     # List the test files.
-    test_files = sorted(glob.glob(f"./data/{dataset}/unscaled_data/test/*{target_stocks[0]}*.csv"))
+    test_files = sorted(
+        glob.glob(f"./data/{dataset}/unscaled_data/test/*{target_stocks[0]}*.csv")
+    )
 
     best_levels_prices = pd.DataFrame()
 
@@ -386,12 +388,12 @@ def wandb_hyperparameters_saving(
 def str2bool(v):
     if isinstance(v, bool):
         return v
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+    if v.lower() in ("yes", "true", "t", "y", "1"):
         return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+    elif v.lower() in ("no", "false", "f", "n", "0"):
         return False
     else:
-        raise argparse.ArgumentTypeError('Boolean value expected.')
+        raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
 def parse_args() -> Any:
@@ -448,10 +450,7 @@ def parse_args() -> Any:
         help="Horizon(s) to be considered (to be expressed in this format: '10,50,100').",
     )
     parser.add_argument(
-        "--training_ratio",
-        type=float,
-        default=0.6,
-        help="Training data proportion."
+        "--training_ratio", type=float, default=0.6, help="Training data proportion."
     )
     parser.add_argument(
         "--validation_ratio",
@@ -460,10 +459,7 @@ def parse_args() -> Any:
         help="Validation data proportion.",
     )
     parser.add_argument(
-        "--test_ratio",
-        type=float,
-        default=0.2,
-        help="Test data proportion."
+        "--test_ratio", type=float, default=0.2, help="Test data proportion."
     )
     parser.add_argument(
         "--stages",
@@ -480,33 +476,22 @@ def parse_args() -> Any:
     parser.add_argument(
         "--targets_type",
         type=str,
-        default='raw',
+        default="raw",
         help="Type of targets to be used (i.e. smooth, raw).",
     )
 
     # Model hyperparameters
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size.")
     parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=32,
-        help="Batch size."
+        "--epochs", type=int, default=100, help="Maximum number of epochs."
     )
     parser.add_argument(
-        "--epochs",
-        type=int,
-        default=100,
-        help="Maximum number of epochs."
-    )
-    parser.add_argument(
-        "--learning_rate",
-        type=float,
-        default=6e-5,
-        help="Learning rate."
+        "--learning_rate", type=float, default=6e-5, help="Learning rate."
     )
     parser.add_argument(
         "--num_workers",
         type=int,
-        default=5,
+        default=5,  # TODO: PUT TO 1 IF DONT WORK
         help="Number of workers to be used by the dataloader.",
     )
     parser.add_argument(

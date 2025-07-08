@@ -134,12 +134,10 @@ class SparseLinear(nn.Module):
 if __name__ == "__main__":
     # Example usage
     sl = SparseLinear(
+        5,
         4,
-        4,
-        connectivity=torch.tensor(
-            [[[0, 1, 1, 2, 1, 3, 2, 3], [0, 0, 1, 1, 2, 2, 3, 3]]]
-        ),
+        connectivity=torch.tensor([[0, 0, 1, 1, 2, 2, 3, 3], [0, 1, 1, 2, 1, 3, 4, 3]]),
     )
-    x = torch.randn(2, 4)
+    x = torch.randn(2, 5)
     output = sl(x)
     print(output)

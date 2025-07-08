@@ -32,6 +32,7 @@ class ConvolutedMixingHNN(nn.Module):
         self,
         homological_structure: GraphHomologicalStructure,
         num_convolutional_channels: int,
+        num_classes: int = 3,
         lighten: bool = False,
     ):
         super(ConvolutedMixingHNN, self).__init__()
@@ -40,6 +41,7 @@ class ConvolutedMixingHNN(nn.Module):
             self.name += "-lighten"
 
         self.homological_structure = homological_structure
+        self.num_classes = num_classes
 
         self.conv_layer_price_vol = nn.Sequential(
             nn.Conv1d(
@@ -65,6 +67,13 @@ class ConvolutedMixingHNN(nn.Module):
 
         self.hnn = HNN(self.convoluted_homological_structure)
 
+        self.readout_layer = nn.Linear(
+            in_features=homological_structure.num_edges
+            + homological_structure.num_triangles
+            + homological_structure.num_tetrahedra,
+            out_features=num_classes,
+        )
+
     def forward(self, x):
         #  x.shape = (batch_size, 1, num_features) num_features è della dimensione di tutti i nodi (nodi nel senso di spazio-temporali, quindi vol1ask_lag0, vol1ask_lag1, ...) * 2 perche c'è price and volume
 
@@ -72,8 +81,12 @@ class ConvolutedMixingHNN(nn.Module):
         x = self.conv_layer_price_vol(x)
 
         # after flatten -> # x.shape = (batch_size, num_convolutional_channels * num_features // 2)
-        x = x.flatten(start_dim=1)
+        # Permute to have channels first, then flatten. so the columns will be feature_channel1, feature_channel2, ..., feature_channelN
+        x = x.permute(0, 2, 1).flatten(start_dim=1)
 
         x = self.hnn(x)  # x.shape = (batch_size, num_classes)
+
+        # after hnn -> x.shape = (batch_size, num_edges + num_triangles + num_tetrahedra)
+        x = self.readout_layer(x)  # x.shape = (batch_size, num_classes)
 
         return x

@@ -16,16 +16,16 @@ class GraphHomologicalStructure:
 
     @property
     def num_nodes(self) -> int:
-        return len(self.nodes_to_edges_connections[0])
+        return max(self.nodes_to_edges_connections[0]) + 1
 
     @property
     def num_edges(self) -> int:
-        return len(self.edges_to_triangles_connections[0])
+        return max(self.edges_to_triangles_connections[0]) + 1
 
     @property
     def num_triangles(self) -> int:
         return (
-            len(self.triangles_to_tetrahedra_connections[0])
+            max(self.triangles_to_tetrahedra_connections[0]) + 1
             if self.triangles_to_tetrahedra_connections
             else 0
         )
@@ -33,7 +33,7 @@ class GraphHomologicalStructure:
     @property
     def num_tetrahedra(self) -> int:
         return (
-            len(set(self.triangles_to_tetrahedra_connections[1]))
+            max(self.triangles_to_tetrahedra_connections[1]) + 1
             if self.triangles_to_tetrahedra_connections
             else 0
         )

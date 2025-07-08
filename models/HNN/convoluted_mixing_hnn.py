@@ -1,58 +1,79 @@
-import torch
+from copy import deepcopy
+
 import torch.nn as nn
 
-from models.HNN.hnn import HNN
+from models.HNN.hnn import HNN, GraphHomologicalStructure
 
 
 class ConvolutedMixingHNN(nn.Module):
     @staticmethod
     def get_connections_for_convoluted_mixing_hnn(
-        nodes_to_edges_connections
+        nodes_to_edges_connections: tuple,
+        num_convolutional_channels: int,
+    ) -> tuple:
+        """
+        This function modifies the connections for the convoluted mixing HNN.
+        It expands the nodes_to_edges_connections to account for the convolutional channels.
+        """
+        new_nodes_to_edges_connections = ([], [])
+        for connection_index in range(len(nodes_to_edges_connections[0])):
+            node_index = nodes_to_edges_connections[0][connection_index]
+            edge_index = nodes_to_edges_connections[1][connection_index]
+
+            for channel in range(num_convolutional_channels):
+                new_nodes_to_edges_connections[0].append(
+                    node_index * num_convolutional_channels + channel
+                )
+                new_nodes_to_edges_connections[1].append(edge_index)
+
+        return new_nodes_to_edges_connections
+
     def __init__(
         self,
-        num_nodes: int,
-        num_edges: int,
-        num_triangles: int,
-        num_tetrahedra: int,
-        nodes_to_edges_connections: tuple,
-        edges_to_triangles_connections: tuple,
-        triangles_to_tetrahedra_connections: tuple,
+        homological_structure: GraphHomologicalStructure,
         num_convolutional_channels: int,
-        num_classes: int,
+        lighten: bool = False,
     ):
         super(ConvolutedMixingHNN, self).__init__()
+        self.name = "hcnn"
+        if lighten:
+            self.name += "-lighten"
+
+        self.homological_structure = homological_structure
 
         self.conv_layer_price_vol = nn.Sequential(
-            nn.Conv2d(
+            nn.Conv1d(
                 in_channels=1,
                 out_channels=num_convolutional_channels,
-                kernel_size=(1, 2),
-                stride=(1, 2),
+                kernel_size=2,
+                stride=2,
             ),
             nn.ReLU(),
         )
 
-        self.hnn = HNN(  # questa HNN bisogna inizializzarla con i parametri dopo la convoluzione
-            num_nodes * num_convolutional_channels,
-            num_edges * num_convolutional_channels,
-            num_triangles * num_convolutional_channels,
-            num_tetrahedra * num_convolutional_channels,
-            nodes_to_edges_connections,
-            edges_to_triangles_connections,
-            triangles_to_tetrahedra_connections,
-            num_classes,
+        convoluted_nodes_to_edges_connections = (
+            self.get_connections_for_convoluted_mixing_hnn(
+                homological_structure.nodes_to_edges_connections,
+                num_convolutional_channels,
+            )
         )
 
-    def reset_parameters(self):
-        nn.init.xavier_uniform_(self.conv1.weight)
-        nn.init.xavier_uniform_(self.conv2.weight)
-        if self.bias is not None:
-            nn.init.zeros_(self.bias)
+        self.convoluted_homological_structure = deepcopy(homological_structure)
+        self.convoluted_homological_structure.nodes_to_edges_connections = (
+            convoluted_nodes_to_edges_connections
+        )
+
+        self.hnn = HNN(self.convoluted_homological_structure)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = nn.ReLU()(x)
-        x = self.conv2(x)
-        if self.bias is not None:
-            x += self.bias.view(1, -1, 1, 1)
+        #  x.shape = (batch_size, 1, num_features) num_features è della dimensione di tutti i nodi (nodi nel senso di spazio-temporali, quindi vol1ask_lag0, vol1ask_lag1, ...) * 2 perche c'è price and volume
+
+        # after conv_layer_price_vol -> x.shape = (batch_size, num_convolutional_channels, num_features // 2)
+        x = self.conv_layer_price_vol(x)
+
+        # after flatten -> # x.shape = (batch_size, num_convolutional_channels * num_features // 2)
+        x = x.flatten(start_dim=1)
+
+        x = self.hnn(x)  # x.shape = (batch_size, num_classes)
+
         return x

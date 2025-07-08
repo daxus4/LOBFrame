@@ -1,3 +1,6 @@
+from copy import deepcopy
+from dataclasses import dataclass
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,56 +8,104 @@ import torch.nn.functional as F
 from models.HNN.sparse_linear import SparseLinear
 
 
+@dataclass
+class GraphHomologicalStructure:
+    nodes_to_edges_connections: tuple
+    edges_to_triangles_connections: tuple
+    triangles_to_tetrahedra_connections: tuple
+
+    @property
+    def num_nodes(self) -> int:
+        return len(self.nodes_to_edges_connections[0])
+
+    @property
+    def num_edges(self) -> int:
+        return len(self.edges_to_triangles_connections[0])
+
+    @property
+    def num_triangles(self) -> int:
+        return (
+            len(self.triangles_to_tetrahedra_connections[0])
+            if self.triangles_to_tetrahedra_connections
+            else 0
+        )
+
+    @property
+    def num_tetrahedra(self) -> int:
+        return (
+            len(set(self.triangles_to_tetrahedra_connections[1]))
+            if self.triangles_to_tetrahedra_connections
+            else 0
+        )
+
+    def get_nodes_to_edges_connections_tensor(self) -> torch.Tensor:
+        return torch.tensor(
+            [
+                self.nodes_to_edges_connections[1],
+                self.nodes_to_edges_connections[0],
+            ],
+            dtype=torch.int64,
+        )
+
+    def get_edges_to_triangles_connections_tensor(self) -> torch.Tensor:
+        return torch.tensor(
+            [
+                self.edges_to_triangles_connections[1],
+                self.edges_to_triangles_connections[0],
+            ],
+            dtype=torch.int64,
+        )
+
+    def get_triangles_to_tetrahedra_connections_tensor(self) -> torch.Tensor:
+        return (
+            torch.tensor(
+                [
+                    self.triangles_to_tetrahedra_connections[1],
+                    self.triangles_to_tetrahedra_connections[0],
+                ],
+                dtype=torch.int64,
+            )
+            if self.triangles_to_tetrahedra_connections
+            else torch.empty((2, 0), dtype=torch.int64)
+        )
+
+    def __deepcopy__(self, memo):
+        return GraphHomologicalStructure(
+            nodes_to_edges_connections=deepcopy(self.nodes_to_edges_connections, memo),
+            edges_to_triangles_connections=deepcopy(
+                self.edges_to_triangles_connections, memo
+            ),
+            triangles_to_tetrahedra_connections=deepcopy(
+                self.triangles_to_tetrahedra_connections, memo
+            ),
+        )
+
+
 class HNN(nn.Module):
     def __init__(
         self,
-        num_nodes: int,
-        num_edges: int,
-        num_triangles: int,
-        num_tetrahedra: int,
-        nodes_to_edges_connections: tuple,
-        edges_to_triangles_connections: tuple,
-        triangles_to_tetrahedra_connections: tuple,
+        homological_structure: GraphHomologicalStructure,
     ):
-        """
-        nodes_to_edges_connections: tuple of two lists, where the first list contains the indices of the edges
-        and the second list contains the indices of the nodes connected to those edges, such that the i-th node
-        in the first list is a member of the i-th edge in the second list.
-
-        Same for edges_to_triangles_connections and triangles_to_tetrahedra_connections
-        """
         super(HNN, self).__init__()
+        self.homological_structure = homological_structure
+
         self.sparse_layer_edges = SparseLinear(
-            num_nodes,
-            num_edges,
-            connectivity=torch.tensor(
-                [nodes_to_edges_connections[1], nodes_to_edges_connections[0]],
-                dtype=torch.int64,
-            ),
+            homological_structure.num_nodes,
+            homological_structure.num_edges,
+            connectivity=self.homological_structure.get_nodes_to_edges_connections_tensor(),
         )
 
         self.sparse_layer_triangles = SparseLinear(
-            num_edges,
-            num_triangles,
-            connectivity=torch.tensor(
-                [edges_to_triangles_connections[1], edges_to_triangles_connections[0]],
-                dtype=torch.int64,
-            ),
+            self.homological_structure.num_edges,
+            self.homological_structure.num_triangles,
+            connectivity=self.homological_structure.get_edges_to_triangles_connections_tensor(),
         )
 
-        self.triangles_to_tetrahedra_connections = triangles_to_tetrahedra_connections
-
-        if len(self.triangles_to_tetrahedra_connections[0]) != 0:
+        if len(self.homological_structure.triangles_to_tetrahedra_connections[0]) != 0:
             self.sparse_layer_tetrahedra = SparseLinear(
-                num_triangles,
-                num_tetrahedra,
-                connectivity=torch.tensor(
-                    [
-                        triangles_to_tetrahedra_connections[1],
-                        triangles_to_tetrahedra_connections[0],
-                    ],
-                    dtype=torch.int64,
-                ),
+                self.homological_structure.num_triangles,
+                self.homological_structure.num_tetrahedra,
+                connectivity=self.homological_structure.get_triangles_to_tetrahedra_connections_tensor(),
             )
 
         else:
@@ -65,7 +116,7 @@ class HNN(nn.Module):
 
         x_s2 = F.relu(self.sparse_layer_triangles(x_s1))
 
-        if len(self.triangles_to_tetrahedra_connections[0]) != 0:
+        if len(self.homological_structure.triangles_to_tetrahedra_connections[0]) != 0:
             x_s3 = F.relu(self.sparse_layer_tetrahedra(x_s2))
 
             return torch.cat([x_s1, x_s2, x_s3], 1)

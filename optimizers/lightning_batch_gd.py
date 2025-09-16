@@ -11,11 +11,12 @@ import torch
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from torch import nn, optim
 from torchmetrics import Accuracy, F1Score
-from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.loggers import WandbLogger, CSVLogger
 
 from loggers import logger
 from utils import get_best_levels_prices_and_labels, wandb_hyperparameters_saving
 import sys
+
 
 class LOBLightningModule(pl.LightningModule):
     def __init__(
@@ -261,18 +262,29 @@ class BatchGDManager:
 
     def delete_run(self):
         api = wandb.Api()
-        project_path = "<Specify here the name of WB project>" # TODO: Specify here the name of WB project.
+        project_path = "PROVA"  # TODO: Specify here the name of WB project.
         runs = api.runs(path=project_path)
-        print('Deleting runs...')
+        print("Deleting runs...")
         while len(runs) < 1:
             runs = api.runs(path=project_path)
         for run in runs:
             input_list = run.metadata
             if input_list is not None:
-                input_list = input_list['args']
-                result_dict = {input_list[i][2:]: input_list[i + 1] for i in range(0, len(input_list), 2)}
+                input_list = input_list["args"]
+                result_dict = {
+                    input_list[i][2:]: input_list[i + 1]
+                    for i in range(0, len(input_list), 2)
+                }
                 modified_dict = result_dict
-                if modified_dict['model'] == str(self.general_hyperparameters['model']) and modified_dict['prediction_horizon'] == str(self.model_hyperparameters['prediction_horizon']) and modified_dict['training_stocks'] == str(self.general_hyperparameters['training_stocks'][0]) and modified_dict['target_stocks'] == str(self.general_hyperparameters['target_stocks'][0]):
+                if (
+                    modified_dict["model"] == str(self.general_hyperparameters["model"])
+                    and modified_dict["prediction_horizon"]
+                    == str(self.model_hyperparameters["prediction_horizon"])
+                    and modified_dict["training_stocks"]
+                    == str(self.general_hyperparameters["training_stocks"][0])
+                    and modified_dict["target_stocks"]
+                    == str(self.general_hyperparameters["target_stocks"][0])
+                ):
                     self.deleted_run = run.name
                     run.delete()
                     print(f"Run succesfully deleted from WanDB: {run.name}.")
@@ -293,30 +305,42 @@ class BatchGDManager:
             save_top_k=1,
             mode="min",
         )
-        early_stopping_callback = EarlyStopping("val_loss", patience=self.patience, min_delta=0.003)
+        early_stopping_callback = EarlyStopping(
+            "val_loss", patience=self.patience, min_delta=0.003
+        )
 
-        os.environ["WANDB_API_KEY"] = ""  # TODO: Insert API key
+        os.environ["WANDB_API_KEY"] = (
+            "8da211b9ff169b36ca4019e57d6e3f27d6976d87"  # TODO: Insert API key
+        )
         os.environ["WANDB__SERVICE_WAIT"] = "300"
         try:
-            wandb_logger = WandbLogger(
-                project="Limit_Order_Book",
-                name=self.experiment_id,
+            csv_logger = CSVLogger(
                 save_dir=logger.find_save_path(self.experiment_id),
+                name=self.experiment_id,
+                version=0,
             )
-            wandb_hyperparameters_saving(
-                wandb_logger=wandb_logger,
-                general_hyperparameters=self.general_hyperparameters,
-                model_hyperparameters=self.model_hyperparameters,
-            )
+
+            # wandb_logger = WandbLogger(
+            #    project="PROVA",  # TODO: Insert project name
+            #    name=self.experiment_id,
+            #    save_dir=logger.find_save_path(self.experiment_id),
+            # )
+            # wandb_hyperparameters_saving(
+            #    wandb_logger=wandb_logger,
+            #    general_hyperparameters=self.general_hyperparameters,
+            #    model_hyperparameters=self.model_hyperparameters,
+            # )
             self.trainer = pl.Trainer(
                 max_epochs=self.epochs,
                 callbacks=[checkpoint_callback, early_stopping_callback],
-                logger=wandb_logger,
+                logger=csv_logger,
                 num_sanity_val_steps=0,
             )
-            self.trainer.fit(self.lob_lightning_module, self.train_loader, self.val_loader)
-            wandb.finish()
-        except:
+            self.trainer.fit(
+                self.lob_lightning_module, self.train_loader, self.val_loader
+            )
+            # wandb.finish()
+        except Exception as e:
             root_path = sys.path[0]
             dir_path = f"{root_path}/loggers/results/{self.experiment_id}"
             if os.path.exists(dir_path):
@@ -327,12 +351,12 @@ class BatchGDManager:
 
             self.delete_run()
 
-            model = self.general_hyperparameters['model']
-            horizon = self.model_hyperparameters['prediction_horizon']
-            training_stocks = self.general_hyperparameters['training_stocks']
-            target_stocks = self.general_hyperparameters['target_stocks']
+            model = self.general_hyperparameters["model"]
+            horizon = self.model_hyperparameters["prediction_horizon"]
+            training_stocks = self.general_hyperparameters["training_stocks"]
+            target_stocks = self.general_hyperparameters["target_stocks"]
             errors_string = f"{model} {horizon} {training_stocks} {target_stocks} {self.deleted_run}\n"
-            with open("errors.txt", 'r+') as file:
+            with open("errors.txt", "r+") as file:
                 content = file.read()
 
                 # If the string does not exist in the file, append it
@@ -342,7 +366,7 @@ class BatchGDManager:
                     print("String appended successfully.")
                 else:
                     print("String already exists in the file.")
-            #raise Exception
+            # raise Exception
 
     def test(self):
         if self.trainer is None:
@@ -366,7 +390,7 @@ class BatchGDManager:
             except:
                 best_model = self.lob_lightning_module.load_from_checkpoint(
                     checkpoint_path=f"{logger.find_save_path(self.experiment_id)}/best_val_model.ckpt",
-                    map_location=torch.device('cpu'),
+                    map_location=torch.device("cpu"),
                     model=self.model,
                     experiment_id=self.experiment_id,
                     learning_rate=self.learning_rate,

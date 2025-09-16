@@ -1,21 +1,19 @@
-import glob
 import concurrent.futures
+import glob
 from itertools import chain
-
-import pandas as pd
-import numpy as np
-import polars as pl
 from typing import *
 
+import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
+import pandas as pd
+import polars as pl
+import seaborn as sns
+import torch
 from fast_tmfg import *
 from sklearn.metrics import mutual_info_score
 
 from utils import get_training_test_stocks_as_string
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-import torch
 
 
 def compute_pairwise_mi(df: pd.DataFrame, n_bins: int = 3000) -> pd.DataFrame:
@@ -36,20 +34,28 @@ def compute_pairwise_mi(df: pd.DataFrame, n_bins: int = 3000) -> pd.DataFrame:
 
     """
 
-    shuffled_df = df.sample(frac=1, random_state=1).reset_index(drop=True)  # Shuffle the dataset.
+    shuffled_df = df.sample(frac=1, random_state=1).reset_index(
+        drop=True
+    )  # Shuffle the dataset.
     sampled_df = shuffled_df.sample(n=len(df), replace=True)  # Perform bootstrapping.
     df = sampled_df.copy()  # Copy the dataset into a variable called 'df'.
     df.reset_index(drop=True, inplace=True)  # Reset the indices.
     del sampled_df  # Delete an unused variable.
 
-    flat_series = df.values.flatten()  # Flat the df to perform a binning on all the values (not feature-by-feature).
-    bins = pd.cut(flat_series, bins=n_bins, labels=False, retbins=True)  # Perform the binning.
+    flat_series = (
+        df.values.flatten()
+    )  # Flat the df to perform a binning on all the values (not feature-by-feature).
+    bins = pd.cut(
+        flat_series, bins=n_bins, labels=False, retbins=True
+    )  # Perform the binning.
     # Apply the binning to each feature of the original dataset.
     for column in df.columns:
         df[column] = pd.cut(df[column], bins=bins[1], labels=False, include_lowest=True)
     del flat_series  # Delete an unused variable.
 
-    discretized_df = df.copy()  # Copy the dataset into a variable called 'discretized_df'.
+    discretized_df = (
+        df.copy()
+    )  # Copy the dataset into a variable called 'discretized_df'.
     del df  # Delete an unused variable.
 
     # Initialize an empty Mutual Information (MI) matrix and fill it with 0s.
@@ -65,12 +71,14 @@ def compute_pairwise_mi(df: pd.DataFrame, n_bins: int = 3000) -> pd.DataFrame:
             mi_matrix[i, j] = mi_value
             mi_matrix[j, i] = mi_value
 
-    mi_matrix = pd.DataFrame(mi_matrix)  # Transform the MI matrix into a Pandas dataframe.
+    mi_matrix = pd.DataFrame(
+        mi_matrix
+    )  # Transform the MI matrix into a Pandas dataframe.
     return mi_matrix  # Return the MI matrix in the form of a Pandas dataframe.
 
 
 def process_file(
-        file: str,
+    file: str,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, nx.Graph, nx.Graph, nx.Graph]:
     """
     Compute the TMFG for volumes of a given orderbook file.
@@ -143,18 +151,18 @@ def mean_tmfg(sm_list: List[pd.DataFrame]) -> pd.DataFrame:
 
     average_matrix = pd.DataFrame(average_matrix)
 
-    '''
+    """
     plt.figure(figsize=(10, 8))  # Optional: Adjusts the size of the figure
     sns.heatmap(average_matrix, annot=True, fmt=".2f", cmap='coolwarm', square=True, linewidths=.5)
     plt.title("Correlation Matrix Heatmap")
     plt.show()
-    '''
+    """
 
     return average_matrix
 
 
 def extract_components(
-        cliques: List[List[int]], separators: List[List[int]], adjacency_matrix: np.ndarray
+    cliques: List[List[int]], separators: List[List[int]], adjacency_matrix: np.ndarray
 ) -> Tuple[List[List[int]], List[List[int]], List[List[int]]]:
     """
     Given the cliques, separators and adjacency matrix of a TMFG, extract the b-cliques of size 2 (edges), 3 (triangles) and 4 (tetrahedra).
@@ -206,22 +214,34 @@ def extract_components(
 
     final_b_cliques_2 = edges
 
-    final_b_cliques_4 = [[(x * 2) + 1 for x in sublist] for sublist in final_b_cliques_4]
+    final_b_cliques_4 = [
+        [(x * 2) + 1 for x in sublist] for sublist in final_b_cliques_4
+    ]
     final_b_cliques_4 = [[x, x - 1] for sublist in final_b_cliques_4 for x in sublist]
     final_b_cliques_4 = list(chain.from_iterable(final_b_cliques_4))
-    final_b_cliques_4 = [final_b_cliques_4[i:i + 8] for i in range(0, len(final_b_cliques_4), 8)]
+    final_b_cliques_4 = [
+        final_b_cliques_4[i : i + 8] for i in range(0, len(final_b_cliques_4), 8)
+    ]
     final_b_cliques_4 = [sorted(sublist) for sublist in final_b_cliques_4]
 
-    final_b_cliques_3 = [[(x * 2) + 1 for x in sublist] for sublist in final_b_cliques_3]
+    final_b_cliques_3 = [
+        [(x * 2) + 1 for x in sublist] for sublist in final_b_cliques_3
+    ]
     final_b_cliques_3 = [[x, x - 1] for sublist in final_b_cliques_3 for x in sublist]
     final_b_cliques_3 = list(chain.from_iterable(final_b_cliques_3))
-    final_b_cliques_3 = [final_b_cliques_3[i:i + 6] for i in range(0, len(final_b_cliques_3), 6)]
+    final_b_cliques_3 = [
+        final_b_cliques_3[i : i + 6] for i in range(0, len(final_b_cliques_3), 6)
+    ]
     final_b_cliques_3 = [sorted(sublist) for sublist in final_b_cliques_3]
 
-    final_b_cliques_2 = [[(x * 2) + 1 for x in sublist] for sublist in final_b_cliques_2]
+    final_b_cliques_2 = [
+        [(x * 2) + 1 for x in sublist] for sublist in final_b_cliques_2
+    ]
     final_b_cliques_2 = [[x, x - 1] for sublist in final_b_cliques_2 for x in sublist]
     final_b_cliques_2 = list(chain.from_iterable(final_b_cliques_2))
-    final_b_cliques_2 = [final_b_cliques_2[i:i + 4] for i in range(0, len(final_b_cliques_2), 4)]
+    final_b_cliques_2 = [
+        final_b_cliques_2[i : i + 4] for i in range(0, len(final_b_cliques_2), 4)
+    ]
     final_b_cliques_2 = [sorted(sublist) for sublist in final_b_cliques_2]
 
     return final_b_cliques_4, final_b_cliques_3, final_b_cliques_2
@@ -230,7 +250,9 @@ def extract_components(
 def execute_pipeline(file_patterns, general_hyperparameters):
     files = []
     for pattern in file_patterns:
-        files.extend(glob.glob(pattern.format(dataset={general_hyperparameters['dataset']})))
+        files.extend(
+            glob.glob(pattern.format(dataset={general_hyperparameters["dataset"]}))
+        )
 
     max_threads = 5
     with concurrent.futures.ThreadPoolExecutor(max_threads) as executor:
@@ -261,12 +283,21 @@ def execute_pipeline(file_patterns, general_hyperparameters):
     original_cliques_all = list(chain.from_iterable(cliques_all))
     original_seps_all = list(chain.from_iterable(seps_all))
 
-    return c4, c3, c2, original_cliques_all, original_seps_all, adj_matrix_all, sm_all, files_all
+    return (
+        c4,
+        c3,
+        c2,
+        original_cliques_all,
+        original_seps_all,
+        adj_matrix_all,
+        sm_all,
+        files_all,
+    )
 
 
 def get_complete_homology(
-        general_hyperparameters: Dict[str, Any],
-        model_hyperparameters: Dict[str, Any],
+    general_hyperparameters: Dict[str, Any],
+    model_hyperparameters: Dict[str, Any],
 ) -> Dict[str, List[List[int]]]:
     """
     Compute the homological structures to be used in the HCNN building process.
@@ -281,41 +312,72 @@ def get_complete_homology(
     homological_structures : Dict[str, List[List[int]]]
     """
 
-    file_patterns_training = [f"./data/{general_hyperparameters['dataset']}/unscaled_data/training/*{element}*.csv" for element in
-                              general_hyperparameters['training_stocks']]
-    c4_training, c3_training, c2_training, original_cliques_all_training, original_seps_all_training, adj_matrix_all_training, sm_all_training, files_all_training = execute_pipeline(
-        file_patterns_training, general_hyperparameters)
+    file_patterns_training = [
+        f"./data/{general_hyperparameters['dataset']}/unscaled_data/training/*{element}*.csv"
+        for element in general_hyperparameters["training_stocks"]
+    ]
+    (
+        c4_training,
+        c3_training,
+        c2_training,
+        original_cliques_all_training,
+        original_seps_all_training,
+        adj_matrix_all_training,
+        sm_all_training,
+        files_all_training,
+    ) = execute_pipeline(file_patterns_training, general_hyperparameters)
 
-    file_patterns_validation = [f"./data/{general_hyperparameters['dataset']}/unscaled_data/validation/*{element}*.csv" for element in
-                                general_hyperparameters['training_stocks']]
-    _, _, _, _, _, adj_matrix_all_validation, sm_all_validation, files_all_validation = execute_pipeline(file_patterns_validation, general_hyperparameters)
+    file_patterns_validation = [
+        f"./data/{general_hyperparameters['dataset']}/unscaled_data/validation/*{element}*.csv"
+        for element in general_hyperparameters["training_stocks"]
+    ]
+    (
+        _,
+        _,
+        _,
+        _,
+        _,
+        adj_matrix_all_validation,
+        sm_all_validation,
+        files_all_validation,
+    ) = execute_pipeline(file_patterns_validation, general_hyperparameters)
 
-    file_patterns_test = [f"./data/{general_hyperparameters['dataset']}/unscaled_data/test/*{element}*.csv" for element in
-                          general_hyperparameters['target_stocks']]
-    _, _, _, _, _, adj_matrix_all_test, sm_all_test, files_all_test = execute_pipeline(file_patterns_test, general_hyperparameters)
+    file_patterns_test = [
+        f"./data/{general_hyperparameters['dataset']}/unscaled_data/test/*{element}*.csv"
+        for element in general_hyperparameters["target_stocks"]
+    ]
+    _, _, _, _, _, adj_matrix_all_test, sm_all_test, files_all_test = execute_pipeline(
+        file_patterns_test, general_hyperparameters
+    )
 
-    homological_structures = {"tetrahedra": c4_training,
-                              "triangles": c3_training,
-                              "edges": c2_training,
-                              "original_cliques": original_cliques_all_training,
-                              "original_separators": original_seps_all_training,
-                              "adj_matrix_training": adj_matrix_all_training,
-                              "similarity_matrices_training": sm_all_training,
-                              "files_training": files_all_training,
-                              "adj_matrix_validation": adj_matrix_all_validation,
-                              "similarity_matrices_validation": sm_all_validation,
-                              "files_validation": files_all_validation,
-                              "adj_matrix_test": adj_matrix_all_test,
-                              "similarity_matrices_test": sm_all_test,
-                              "files_test": files_all_test
-                              }
+    homological_structures = {
+        "tetrahedra": c4_training,
+        "triangles": c3_training,
+        "edges": c2_training,
+        "original_cliques": original_cliques_all_training,
+        "original_separators": original_seps_all_training,
+        "adj_matrix_training": adj_matrix_all_training,
+        "similarity_matrices_training": sm_all_training,
+        "files_training": files_all_training,
+        "adj_matrix_validation": adj_matrix_all_validation,
+        "similarity_matrices_validation": sm_all_validation,
+        "files_validation": files_all_validation,
+        "adj_matrix_test": adj_matrix_all_test,
+        "similarity_matrices_test": sm_all_test,
+        "files_test": files_all_test,
+    }
 
-    training_stocks_string, test_stocks_string = get_training_test_stocks_as_string(general_hyperparameters)
+    training_stocks_string, test_stocks_string = get_training_test_stocks_as_string(
+        general_hyperparameters
+    )
     print(training_stocks_string, test_stocks_string)
-    torch.save(homological_structures,
-               f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{training_stocks_string}_test_{test_stocks_string}/complete_homological_structures.pt")
+    torch.save(
+        homological_structures,
+        f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{training_stocks_string}_test_{test_stocks_string}/complete_homological_structures.pt",
+    )
     # torch.save(homological_structures,
     #           f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/homological_structures_large_tick_stocks.pt")
-    print('Homological structures have been saved.')
+    print("Homological structures have been saved.")
+
 
 # get_homology({'dataset': 'nasdaq'})

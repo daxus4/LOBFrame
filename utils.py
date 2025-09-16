@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from data_processing.spatiotemporal_utils.constants import INITIAL_LAGS_DEFAULT_STR
 from loggers import logger
 
 
@@ -34,6 +35,7 @@ def data_split(
     training_ratio: float,
     validation_ratio: float,
     include_target_stock_in_training: bool,
+    validation_days: List[str] = [],
 ) -> None:
     """
     Split the data into training, validation and test sets based on the training, validation and test ratios.
@@ -45,6 +47,7 @@ def data_split(
         training_ratio (float):  The ratio of training data.
         validation_ratio (float): The ratio of validation data.
         include_target_stock_in_training (bool): Including or not the target stock in the training set.
+        validation_days (list): Specific days to be used for validation (if any). If this argument is not empty, it overrides the 'validation_ratio' argument.
 
     Returns:
         None.
@@ -91,9 +94,28 @@ def data_split(
         if not os.path.exists(f"./data/{dataset}/unscaled_data/test"):
             os.makedirs(f"./data/{dataset}/unscaled_data/test")
 
+        training_files_indices = list(range(num_training_files))
+        validation_files_indices = list(
+            range(num_training_files, num_training_files + num_validation_files)
+        )
+
         # Move the files to the training folder (scaled data).
+        if len(validation_days) > 0:
+            # If specific validation days are provided, override the validation_ratio argument.
+            validation_files_indices = []
+            for day in validation_days:
+                for i, file in enumerate(files_scaled):
+                    if day in file:
+                        validation_files_indices.append(i)
+            validation_files_indices = sorted(validation_files_indices)
+            training_files_indices = [
+                i
+                for i in range(num_training_files)
+                if i not in validation_files_indices
+            ]
+
         # If requested, target stocks are removed from the training set.
-        for i in range(num_training_files):
+        for i in training_files_indices:
             destination_folder = f"./data/{dataset}/scaled_data/training"
             file = files_scaled[i]
             if include_target_stock_in_training:
@@ -104,9 +126,9 @@ def data_split(
             print(f"{file} --> {destination_folder}")
 
         # Move the files to the validation folder (scaled data).
-        for i in range(num_validation_files):
+        for i in validation_files_indices:
             destination_folder = f"./data/{dataset}/scaled_data/validation"
-            file = files_scaled[i + num_training_files]
+            file = files_scaled[i]
             shutil.move(file, destination_folder)
             print(f"{file} --> {destination_folder}")
 
@@ -119,7 +141,7 @@ def data_split(
 
         # Move the files to the training folder (unscaled data).
         # If requested, target stocks are removed from the training set.
-        for i in range(num_training_files):
+        for i in training_files_indices:
             destination_folder = f"./data/{dataset}/unscaled_data/training"
             file = files_unscaled[i]
             if include_target_stock_in_training:
@@ -130,9 +152,9 @@ def data_split(
             print(f"{file} --> {destination_folder}")
 
         # Move the files to the validation folder (unscaled data).
-        for i in range(num_validation_files):
+        for i in validation_files_indices:
             destination_folder = f"./data/{dataset}/unscaled_data/validation"
-            file = files_unscaled[i + num_training_files]
+            file = files_unscaled[i]
             shutil.move(file, destination_folder)
             print(f"{file} --> {destination_folder}")
 
@@ -456,7 +478,13 @@ def parse_args() -> Any:
         "--validation_ratio",
         type=float,
         default=0.2,
-        help="Validation data proportion.",
+        help="Validation data proportion. If validation_days is not empty, this argument is ignored.",
+    )
+    parser.add_argument(
+        "--validation_days",
+        type=str,
+        default="",
+        help="Specific days to be used for validation (to be expressed in this format: '2020-01-02,2020-01-03'). If this argument is not empty, it overrides the 'validation_ratio' argument.",
     )
     parser.add_argument(
         "--test_ratio", type=float, default=0.2, help="Test data proportion."
@@ -491,7 +519,7 @@ def parse_args() -> Any:
     parser.add_argument(
         "--num_workers",
         type=int,
-        default=5,  # TODO: PUT TO 1 IF DONT WORK
+        default=1,  # TODO: PUT TO 1 IF DONT WORK
         help="Number of workers to be used by the dataloader.",
     )
     parser.add_argument(
@@ -536,7 +564,18 @@ def parse_args() -> Any:
         default=10,
         help="Patience to be used in the training stage.",
     )
-
+    parser.add_argument(
+        "--st_hnn_initial_lags",
+        type=str,
+        default=INITIAL_LAGS_DEFAULT_STR,
+        help="Initial lags to be used in the spatiotemporal matrix creation stage (to be expressed in this format: '1,2,3').",
+    )
+    parser.add_argument(
+        "--st_hnn_number_past_lags",
+        type=int,
+        default=20,
+        help="Number of past lags to be used in the spatiotemporal hnn model.",
+    )
     # Trading hyperparameters
     parser.add_argument(
         "--initial_cash",
@@ -593,6 +632,12 @@ def create_hyperparameters_yaml(experiment_id: str, args: Any) -> None:
         map(int, args.horizons.split(","))
     )  # Parsing of 'horizons' input argument.
     stages = list(args.stages.split(","))  # Parsing of 'stages' input argument.
+    validation_days = (
+        args.validation_days.split(",") if len(args.validation_days) > 0 else []
+    )  # Parsing of 'validation_days' input argument.
+    initial_lags_sthnn = list(
+        map(int, args.st_hnn_initial_lags.split(","))
+    )  # Parsing of 'st_hnn_initial_lags' input argument.
 
     # Create a dictionary (YAML structure) containing the hyperparameters.
     data = {
@@ -605,10 +650,12 @@ def create_hyperparameters_yaml(experiment_id: str, args: Any) -> None:
             "horizons": horizons,
             "training_ratio": args.training_ratio,
             "validation_ratio": args.validation_ratio,
+            "validation_days": validation_days,
             "test_ratio": args.test_ratio,
             "stages": stages,
             "include_target_stock_in_training": args.include_target_stock_in_training,
             "targets_type": args.targets_type,
+            "experiment_id": experiment_id,
         },
         "model": {
             "batch_size": args.batch_size,
@@ -622,6 +669,8 @@ def create_hyperparameters_yaml(experiment_id: str, args: Any) -> None:
             "prediction_horizon": args.prediction_horizon,
             "balanced_sampling": args.balanced_sampling,
             "patience": args.patience,
+            "st_hnn_initial_lags": initial_lags_sthnn,
+            "st_hnn_number_past_lags": args.st_hnn_number_past_lags,
         },
         "trading": {
             "initial_cash": args.initial_cash,
@@ -632,12 +681,21 @@ def create_hyperparameters_yaml(experiment_id: str, args: Any) -> None:
         },
     }
 
+    save_dir_path = logger.find_save_path(experiment_id)
+    if not os.path.exists(save_dir_path):
+        os.makedirs(save_dir_path)
+
     # Specify the file path where saving the YAML file.
-    file_path = f"{logger.find_save_path(experiment_id)}/hyperparameters.yaml"
+    file_path = f"{save_dir_path}/hyperparameters.yaml"
 
     # Write the data to the YAML file.
     with open(file_path, "w") as file:
         yaml.dump(data, file)
+
+
+def is_hyperparams_yaml_existing(experiment_id: str) -> bool:
+    file_path = f"{logger.find_save_path(experiment_id)}/hyperparameters.yaml"
+    return os.path.isfile(file_path)
 
 
 def create_tree(path: str) -> None:

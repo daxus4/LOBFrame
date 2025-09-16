@@ -1,15 +1,16 @@
 from data_processing import data_process_utils
+from data_processing.complete_homological_utils import get_complete_homology
 from loggers import logger
 from optimizers.executor import Executor
 from simulator import market_sim, post_trading_analysis
 from utils import (
-    data_split,
-    load_yaml,
-    save_dataset_info,
-    parse_args,
     create_hyperparameters_yaml,
+    data_split,
+    is_hyperparams_yaml_existing,
+    load_yaml,
+    parse_args,
+    save_dataset_info,
 )
-from data_processing.complete_homological_utils import get_complete_homology
 
 if __name__ == "__main__":
     # Parse input arguments.
@@ -25,7 +26,8 @@ if __name__ == "__main__":
         # If an experiment ID is passed, use it.
         experiment_id = args.experiment_id
         # Replace the hyperparameters file with the new arguments passed as input.
-        # create_hyperparameters_yaml(experiment_id, args)
+        if not is_hyperparams_yaml_existing(experiment_id):
+            create_hyperparameters_yaml(experiment_id, args)
 
     # Load the configuration file containing the hyperparameters.
     hyperparameters_path = (
@@ -40,7 +42,7 @@ if __name__ == "__main__":
     trading_hyperparameters = load_yaml(hyperparameters_path, "trading")
 
     if args.experiment_id is not None:
-        general_hyperparameters['stages'] = args.stages.split(",")
+        general_hyperparameters["stages"] = args.stages.split(",")
 
     # Handle the data processing stage.
     if "data_processing" in general_hyperparameters["stages"]:
@@ -71,6 +73,7 @@ if __name__ == "__main__":
             include_target_stock_in_training=general_hyperparameters[
                 "include_target_stock_in_training"
             ],
+            validation_days=general_hyperparameters["validation_days"],
         )
 
     # Instantiate the executor as None.
@@ -78,16 +81,29 @@ if __name__ == "__main__":
     # For 'torch_dataset_preparation' stage, instantiate the executor with proper arguments.
     if "torch_dataset_preparation" in general_hyperparameters["stages"]:
         executor = Executor(
-            experiment_id, general_hyperparameters, model_hyperparameters, torch_dataset_preparation=True
+            experiment_id,
+            general_hyperparameters,
+            model_hyperparameters,
+            torch_dataset_preparation=True,
         )
 
     if "torch_dataset_preparation_backtest" in general_hyperparameters["stages"]:
         executor = Executor(
-            experiment_id, general_hyperparameters, model_hyperparameters, torch_dataset_preparation=False, torch_dataset_preparation_backtest=True
+            experiment_id,
+            general_hyperparameters,
+            model_hyperparameters,
+            torch_dataset_preparation=False,
+            torch_dataset_preparation_backtest=True,
         )
 
-    if "complete_homological_structures_preparation" in general_hyperparameters["stages"]:
-        get_complete_homology(general_hyperparameters=general_hyperparameters, model_hyperparameters=model_hyperparameters)
+    if (
+        "complete_homological_structures_preparation"
+        in general_hyperparameters["stages"]
+    ):
+        get_complete_homology(
+            general_hyperparameters=general_hyperparameters,
+            model_hyperparameters=model_hyperparameters,
+        )
 
     # For the 'training' and 'evaluation' stages, instantiate the executor with proper arguments.
     if (
@@ -110,10 +126,13 @@ if __name__ == "__main__":
             # Clean up the experiment folder from wandb logging files.
             executor.logger_clean_up()
         except:
-            print('Exception detected')
+            print("Exception detected")
             wb_error_detection = True
 
-    if "evaluation" in general_hyperparameters["stages"] and wb_error_detection is False:
+    if (
+        "evaluation" in general_hyperparameters["stages"]
+        and wb_error_detection is False
+    ):
         # Out-of-sample test of the model.
         executor.execute_testing()
         # Clean up the experiment folder from wandb logging files.
@@ -128,5 +147,8 @@ if __name__ == "__main__":
     if "post_trading_analysis" in general_hyperparameters["stages"]:
         # Perform a post-trading analysis.
         post_trading_analysis.post_trading_analysis(
-            experiment_id=experiment_id, general_hyperparameters=general_hyperparameters, trading_hyperparameters=trading_hyperparameters, model_hyperparameters=model_hyperparameters
+            experiment_id=experiment_id,
+            general_hyperparameters=general_hyperparameters,
+            trading_hyperparameters=trading_hyperparameters,
+            model_hyperparameters=model_hyperparameters,
         )

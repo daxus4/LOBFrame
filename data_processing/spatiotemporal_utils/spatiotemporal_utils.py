@@ -1,16 +1,16 @@
 import os
 import pickle
 from dataclasses import dataclass
-from itertools import chain
+from itertools import chain, combinations
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 import torch
 from fast_tmfg import TMFG
 
-from data_processing.complete_homological_utils import extract_components
 from data_processing.spatiotemporal_utils.candidate_lags_extraction import (
     get_candidates_lags,
 )
@@ -44,6 +44,42 @@ class SpatiotemporalMatrixPaths:
     pruned_lag_mi_df_path: Path | None = None
     spatiotemporal_matrix_path: Path | None = None
     images_folder_path: Path | None = None
+
+
+def get_cliques(g: nx.Graph) -> Tuple[List[Set], List[Set], List[Set], List[Set]]:
+    clique_1 = []
+    clique_2 = []
+    clique_3 = []
+    clique_4 = []
+    for clique in nx.enumerate_all_cliques(g):
+        clique = set(clique)
+        if len(clique) == 1:
+            clique_1.append(clique)
+        elif len(clique) == 2:
+            clique_2.append(clique)
+        elif len(clique) == 3:
+            clique_3.append(clique)
+        elif len(clique) == 4:
+            clique_4.append(clique)
+    return clique_1, clique_2, clique_3, clique_4
+
+
+def get_cliques_connections(
+    clique_last: List[Set], clique_next: List[Set]
+) -> List[List]:
+    connection_list = [[], []]
+    component_mapping = {i: x for i, x in enumerate(clique_last)}
+    for i, clique in enumerate(clique_next):
+        component = [set(x) for x in combinations(clique, len(clique) - 1)]
+        index_last = [
+            list(component_mapping.keys())[list(component_mapping.values()).index(x)]
+            for x in component
+        ]
+        for j in index_last:
+            connection_list[0].append(j)
+            connection_list[1].append(i)
+
+    return connection_list
 
 
 def get_spatiotemporal_mi_matrix(
@@ -137,18 +173,20 @@ def get_spatiotemporal_tmfg(
         spatiotemporal_df, output="weighted_sparse_W_matrix"
     )
 
-    c4, c3, c2 = extract_components(cliques_all, seps_all, adj_matrix_all)
-    c4 = list(chain.from_iterable(c4))
-    c3 = list(chain.from_iterable(c3))
-    c2 = list(chain.from_iterable(c2))
+    spatiotemporal_graph = nx.from_numpy_array(adj_matrix_all)
+    clique_1, clique_2, clique_3, clique_4 = get_cliques(spatiotemporal_graph)
+
+    connection_1 = get_cliques_connections(clique_1, clique_2)
+    connection_2 = get_cliques_connections(clique_2, clique_3)
+    connection_3 = get_cliques_connections(clique_3, clique_4)
 
     original_cliques_all = list(chain.from_iterable(cliques_all))
     original_seps_all = list(chain.from_iterable(seps_all))
 
     homological_structure = GraphHomologicalStructure(
-        nodes_to_edges_connections=c2,
-        edges_to_triangles_connections=c3,
-        triangles_to_tetrahedra_connections=c4,
+        nodes_to_edges_connections=connection_1,
+        edges_to_triangles_connections=connection_2,
+        triangles_to_tetrahedra_connections=connection_3,
     )
 
     return (
@@ -221,10 +259,6 @@ def execute_spatiotemporal_tmfg_pipeline(
         ),
         images_folder_path=images_folder_path_dir,
     )
-
-    # POI ATTENZIONE CHE CODICE PER SELEZIONARE I VALIDATION DAYS GIUSTI NON FUNZIONA.
-    # DEVO PROVARE A RILANCIARE PRIMA IL CODICE PER CREARE I DATASET SCALED E UNSCALED (FACENDOLO STOPPARE PRIMA CHE CHIAMA LA FUNZIONE DI DIVISIONE DEI DF)
-    # E POI DEBUGGARE IL CODICE DI SELEZIONE DEI FILES DI VALIDATION
 
     homological_structure, original_cliques_all, original_seps_all, adj_matrix_all = (
         get_spatiotemporal_tmfg(

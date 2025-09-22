@@ -108,11 +108,18 @@ def data_split(
                     if day in file:
                         validation_files_indices.append(i)
             validation_files_indices = sorted(validation_files_indices)
+            num_validation_files = len(validation_files_indices)
+
             training_files_indices = [
                 i
-                for i in range(num_training_files)
+                for i in range(num_training_files + num_validation_files)
                 if i not in validation_files_indices
             ]
+
+            num_training_files = len(training_files_indices)
+            num_test_files = (
+                len(files_scaled) - num_training_files - num_validation_files
+            )
 
         # If requested, target stocks are removed from the training set.
         for i in training_files_indices:

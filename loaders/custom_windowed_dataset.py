@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 from loaders.custom_dataset import CustomDataset
@@ -62,11 +63,7 @@ class CustomWindowedDataset(CustomDataset):
         ]
 
         # Stack into new DataFrame, reverse order (decreasing by window number)
-        result = pd.DataFrame(
-            window_means[::-1],
-            columns=self.cache_data[cache_idx].columns[:columns_number],
-        )
-        result.index = range(len(result))  # reset index
+        result = np.vstack(window_means[::-1])
         return result
 
     def _get_single_window_mean(
@@ -81,11 +78,11 @@ class CustomWindowedDataset(CustomDataset):
         start_window_idx = start_idx - end_lag_window + 1
         end_window_idx = start_idx - start_lag_window + 1
 
-        window_df = self.cache_data[cache_idx].iloc[
+        window_df = self.cache_data[cache_idx][
             start_window_idx:end_window_idx, :columns_number
         ]
 
-        return window_df.mean()
+        return window_df.mean(axis=0)
 
 
 """if __name__ == "__main__":

@@ -1,5 +1,6 @@
 from copy import deepcopy
 
+import torch
 import torch.nn as nn
 
 from models.HNN.hnn import HNN, GraphHomologicalStructure
@@ -75,7 +76,11 @@ class ConvolutedMixingHNN(nn.Module):
         )
 
     def forward(self, x):
-        #  x.shape = (batch_size, 1, num_features) num_features è della dimensione di tutti i nodi (nodi nel senso di spazio-temporali, quindi vol1ask_lag0, vol1ask_lag1, ...) * 2 perche c'è price and volume
+        # x.shape = (batch_size, 1, num_window_lags, num_spatial_features) num_spatial_features è della dimensione di tutti i nodi (nodi nel senso di spaziali quindi senza lag) * 2 perche c'è price and volume
+
+        # After these -> x.shape = (batch_size, 1, num_features) num_features è della dimensione di tutti i nodi (nodi nel senso di spazio-temporali, quindi vol1ask_lag0, vol1ask_lag1, ...) * 2 perche c'è price and volume
+        x = torch.flip(x, dims=[2])
+        x = x.reshape(x.shape[0], 1, -1)
 
         # after conv_layer_price_vol -> x.shape = (batch_size, num_convolutional_channels, num_features // 2)
         x = self.conv_layer_price_vol(x)
@@ -87,6 +92,6 @@ class ConvolutedMixingHNN(nn.Module):
         x = self.hnn(x)  # x.shape = (batch_size, num_classes)
 
         # after hnn -> x.shape = (batch_size, num_edges + num_triangles + num_tetrahedra)
-        x = self.readout_layer(x)  # x.shape = (batch_size, num_classes)
+        x = self.readout_layer(x)  # x.shape = (batch_size, num
 
         return x

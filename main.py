@@ -1,5 +1,9 @@
 from data_processing import data_process_utils
 from data_processing.complete_homological_utils import get_complete_homology
+from data_processing.spatiotemporal_utils import spatiotemporal_homological_utils
+from data_processing.spatiotemporal_utils.spatiotemporal_utils import (
+    execute_spatiotemporal_tmfg_pipeline,
+)
 from loggers import logger
 from optimizers.executor import Executor
 from simulator import market_sim, post_trading_analysis
@@ -103,6 +107,16 @@ if __name__ == "__main__":
         get_complete_homology(
             general_hyperparameters=general_hyperparameters,
             model_hyperparameters=model_hyperparameters,
+        )
+
+    if (
+        "spatiotemporal_homological_structures_preparation"
+        in general_hyperparameters["stages"]
+    ):
+        execute_spatiotemporal_tmfg_pipeline(
+            general_hyperparameters=general_hyperparameters,
+            model_hyperparameters=model_hyperparameters,
+            experiment_id=experiment_id,
         )
 
     # For the 'training' and 'evaluation' stages, instantiate the executor with proper arguments.

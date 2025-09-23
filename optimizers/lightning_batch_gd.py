@@ -1,21 +1,21 @@
 import copy
 import os
 import pickle
-import wandb
 import shutil
 import stat
+import sys
 
 import lightning.pytorch as pl
 import numpy as np
 import torch
+import wandb
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from torch import nn, optim
 from torchmetrics import Accuracy, F1Score
-from lightning.pytorch.loggers import WandbLogger, CSVLogger
 
 from loggers import logger
 from utils import get_best_levels_prices_and_labels, wandb_hyperparameters_saving
-import sys
 
 
 class LOBLightningModule(pl.LightningModule):
@@ -314,32 +314,27 @@ class BatchGDManager:
         )
         os.environ["WANDB__SERVICE_WAIT"] = "300"
         try:
-            csv_logger = CSVLogger(
-                save_dir=logger.find_save_path(self.experiment_id),
+            wandb_logger = WandbLogger(
+                project="Limit_Order_Book",
                 name=self.experiment_id,
-                version=0,
+                save_dir=logger.find_save_path(self.experiment_id),
             )
-
-            # wandb_logger = WandbLogger(
-            #    project="PROVA",  # TODO: Insert project name
-            #    name=self.experiment_id,
-            #    save_dir=logger.find_save_path(self.experiment_id),
-            # )
-            # wandb_hyperparameters_saving(
-            #    wandb_logger=wandb_logger,
-            #    general_hyperparameters=self.general_hyperparameters,
-            #    model_hyperparameters=self.model_hyperparameters,
-            # )
+            wandb_hyperparameters_saving(
+                wandb_logger=wandb_logger,
+                general_hyperparameters=self.general_hyperparameters,
+                model_hyperparameters=self.model_hyperparameters,
+            )
             self.trainer = pl.Trainer(
                 max_epochs=self.epochs,
                 callbacks=[checkpoint_callback, early_stopping_callback],
-                logger=csv_logger,
+                logger=wandb_logger,
                 num_sanity_val_steps=0,
             )
             self.trainer.fit(
                 self.lob_lightning_module, self.train_loader, self.val_loader
             )
-            # wandb.finish()
+            wandb.finish()
+
         except Exception as e:
             root_path = sys.path[0]
             dir_path = f"{root_path}/loggers/results/{self.experiment_id}"

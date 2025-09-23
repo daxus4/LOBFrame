@@ -1,8 +1,12 @@
 from pathlib import Path
+from typing import Dict, List, Tuple
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-from constants import LAGS
+import seaborn as sns
+from scipy.integrate import cumulative_trapezoid
+from scipy.interpolate import UnivariateSpline
 
 
 def get_auto_mutual_info_df(lag_mi_df_map: Dict[int, pd.DataFrame]) -> pd.DataFrame:
@@ -186,7 +190,7 @@ def get_normalized_finite_difference_derivative(
 def get_cumulative_distribution(
     x_values: np.ndarray, y_values: np.ndarray
 ) -> np.ndarray:
-    area = np.trapezoid(y_values, x_values)
+    area = np.trapz(y_values, x_values)
     y_norm = y_values / area
 
     cdf = cumulative_trapezoid(y_norm, x_values, initial=0)
@@ -353,8 +357,6 @@ def get_candidates_lags(
         mean_df["Lag"].values,
         mean_df["Mean"].values,
     )
-
-    print("Spline X values:", spline_x)
 
     slope_values = get_normalized_finite_difference_derivative(spline_x, spline_y)
     cdf = get_cumulative_distribution(spline_x, slope_values)

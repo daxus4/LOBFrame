@@ -1,5 +1,7 @@
+import glob
 import os
 import pickle
+import re
 from dataclasses import dataclass
 from itertools import chain, combinations
 from pathlib import Path
@@ -83,7 +85,7 @@ def get_cliques_connections(
 
 
 def get_spatiotemporal_mi_matrix(
-    lob_files_paths: list[str],
+    lob_files_paths: list[Path],
     initial_lags: list[int],
     num_bins: int,
     num_files_for_checkpoint: int,
@@ -148,6 +150,30 @@ def get_spatiotemporal_mi_matrix(
     return spatiotemporal_df
 
 
+def parse_col(c):
+    lag = re.search(r"_lag(\d+)", c)
+    lag_num = int(lag.group(1)) if lag else 0
+    c_clean = c.split("_lag")[0]
+    match = re.match(r"(ASKs|ASKp|BIDs|BIDp)(\d+)", c_clean)
+    if match:
+        prefix, level = match.groups()
+        return prefix, int(level), lag_num
+    return c, 0, lag_num
+
+
+def sort_key(c):
+    if "Target" in c:
+        return (99, 99, 99)  # Put target columns at the end
+
+    order = ["ASKs", "ASKp", "BIDs", "BIDp"]
+    prefix, level, lag_num = parse_col(c)
+    return (
+        lag_num,  # non-lagged first
+        level,  # by level number
+        order.index(prefix) if prefix in order else 99,  # by prefix order
+    )
+
+
 def get_spatiotemporal_tmfg(
     lob_files_paths: list[str],
     initial_lags: list[int],
@@ -167,6 +193,10 @@ def get_spatiotemporal_tmfg(
     if saving_paths.spatiotemporal_matrix_path is not None:
         with open(saving_paths.spatiotemporal_matrix_path, "wb") as f:
             pickle.dump(spatiotemporal_df, f)
+
+    spatiotemporal_df = spatiotemporal_df[
+        sorted(spatiotemporal_df.columns, key=sort_key)
+    ].copy()
 
     model_all = TMFG()
     cliques_all, seps_all, adj_matrix_all = model_all.fit_transform(
@@ -201,7 +231,7 @@ def execute_spatiotemporal_tmfg_pipeline(
     general_hyperparameters: Dict[str, Any],
     model_hyperparameters: Dict[str, Any],
 ):
-    lob_files_paths = sorted(
+    lob_folders_paths = sorted(
         [
             os.path.join(
                 ".",
@@ -214,6 +244,9 @@ def execute_spatiotemporal_tmfg_pipeline(
             for element in general_hyperparameters["training_stocks"]
         ]
     )
+
+    lob_files_paths = list(chain.from_iterable(map(glob.glob, lob_folders_paths)))
+    lob_files_paths = sorted([Path(lob_file) for lob_file in lob_files_paths])
 
     training_stocks_string, _ = get_training_test_stocks_as_string(
         general_hyperparameters
@@ -234,7 +267,7 @@ def execute_spatiotemporal_tmfg_pipeline(
         intermediate_files_path_dir, IMAGES_SUBFOLDER_NAME
     )
     homological_structure_path = os.path.join(
-        saving_path_dir, "st_hnn_homological_structure.pkl"
+        saving_path_dir, "st_hnn_homological_structure.pt"
     )
 
     os.makedirs(saving_path_dir, exist_ok=True)
@@ -242,22 +275,24 @@ def execute_spatiotemporal_tmfg_pipeline(
     os.makedirs(images_folder_path_dir, exist_ok=True)
 
     saving_paths = SpatiotemporalMatrixPaths(
-        lag_mi_df_path=os.path.join(intermediate_files_path_dir, "lag_mi_df.pkl"),
-        logging_file_path=os.path.join(intermediate_files_path_dir, "logging.txt"),
+        lag_mi_df_path=Path(os.path.join(intermediate_files_path_dir, "lag_mi_df.pkl")),
+        logging_file_path=Path(
+            os.path.join(intermediate_files_path_dir, "logging.txt")
+        ),
         homological_structure_path=homological_structure_path,
-        interval_lags_path=os.path.join(
-            intermediate_files_path_dir, "interval_lags.pkl"
+        interval_lags_path=Path(
+            os.path.join(intermediate_files_path_dir, "interval_lags.pkl")
         ),
-        lag_candidates_path=os.path.join(
-            intermediate_files_path_dir, "lag_candidates.pkl"
+        lag_candidates_path=Path(
+            os.path.join(intermediate_files_path_dir, "lag_candidates.pkl")
         ),
-        pruned_lag_mi_df_path=os.path.join(
-            intermediate_files_path_dir, "pruned_lag_mi_df.pkl"
+        pruned_lag_mi_df_path=Path(
+            os.path.join(intermediate_files_path_dir, "pruned_lag_mi_df.pkl")
         ),
-        spatiotemporal_matrix_path=os.path.join(
-            intermediate_files_path_dir, "spatiotemporal_matrix.pkl"
+        spatiotemporal_matrix_path=Path(
+            os.path.join(intermediate_files_path_dir, "spatiotemporal_matrix.pkl")
         ),
-        images_folder_path=images_folder_path_dir,
+        images_folder_path=Path(images_folder_path_dir),
     )
 
     homological_structure, original_cliques_all, original_seps_all, adj_matrix_all = (
@@ -280,3 +315,46 @@ def execute_spatiotemporal_tmfg_pipeline(
 
     torch.save(homological_structure_dataset, homological_structure_path)
     print("Spatiotemporal homological structures have been saved.")
+
+
+if __name__ == "__main__":
+    # Example usage
+    general_hyperparameters = {
+        "dataset": "nasdaq",
+        "training_stocks": ["CSCO"],
+        "target_stocks": ["CSCO"],
+        "experiment_id": 1,
+    }
+    model_hyperparameters = {
+        "st_hnn_initial_lags": [
+            1000,
+            500,
+            400,
+            300,
+            200,
+            100,
+            90,
+            80,
+            70,
+            60,
+            50,
+            40,
+            30,
+            25,
+            20,
+            15,
+            10,
+            9,
+            8,
+            7,
+            6,
+            5,
+            4,
+            3,
+            2,
+            1,
+            0,
+        ],
+        "st_hnn_number_past_lags": 20,
+    }
+    execute_spatiotemporal_tmfg_pipeline(general_hyperparameters, model_hyperparameters)

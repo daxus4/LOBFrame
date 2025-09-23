@@ -1,16 +1,13 @@
-from pathlib import Path
-import pickle
-
-import pandas as pd
-from itertools import repeat
-import logging
-from typing import Dict, List
-import pandas as pd
 import concurrent.futures
-import numpy as np
-from pathlib import Path
+import logging
 import os
 import pickle
+from itertools import repeat
+from pathlib import Path
+from typing import Dict, List
+
+import numpy as np
+import pandas as pd
 from sklearn.metrics import mutual_info_score
 
 
@@ -187,7 +184,7 @@ def get_file_lag_mi_map(
 
         if needed_lags:
             logger.info(f"Processing {file.name} (index {i}), new lags: {needed_lags}")
-            with concurrent.futures.ProcessPoolExecutor(8) as executor:
+            with concurrent.futures.ProcessPoolExecutor(6) as executor:
                 results = list(
                     executor.map(
                         get_mi_dfs_from_path,
@@ -226,7 +223,7 @@ def get_averaged_file_lag_mi_map(
 
 
 def compute_lag_mi_df_map(
-    lob_files_paths: list[str],
+    lob_files_paths: list[Path],
     lags: list[int],
     logging_file_path: Path,
     saving_path: Path,
@@ -240,13 +237,15 @@ def compute_lag_mi_df_map(
 
     current_lags = sorted(lags)
     if is_already_finished(logging_file_path, current_lags):
-        logger.info("Processing already finished for all required lags. Exiting.")
-        exit(0)
+        logger.info(
+            "Processing already finished for all required lags. Skipping matrix computation."
+        )
+        return
 
     logged_lags = get_logged_lags(logging_file_path)
     if not logged_lags:
         logger.info(f"No previous lag info found. Logging initial lags: {current_lags}")
-        log_current_lags(current_lags)
+        log_current_lags(current_lags, logger)
 
     else:
         new_lags = list(set(current_lags) - set(logged_lags))

@@ -6,7 +6,7 @@ import torch.nn as nn
 from models.HNN.hnn import HNN, GraphHomologicalStructure
 
 
-class ConvolutedMixingHNN(nn.Module):
+class SpatioTemporalHNN(nn.Module):
     @staticmethod
     def get_connections_for_convoluted_mixing_hnn(
         nodes_to_edges_connections: tuple,
@@ -36,7 +36,7 @@ class ConvolutedMixingHNN(nn.Module):
         num_classes: int = 3,
         lighten: bool = False,
     ):
-        super(ConvolutedMixingHNN, self).__init__()
+        super(SpatioTemporalHNN, self).__init__()
         self.name = "hcnn"
         if lighten:
             self.name += "-lighten"

@@ -93,30 +93,43 @@ def get_spatiotemporal_mi_matrix(
     saving_paths: SpatiotemporalMatrixPaths,
 ) -> pd.DataFrame:
     # Compute lag mi df map for initial lags to check auto-MI
-    compute_lag_mi_df_map(
-        lob_files_paths,
-        initial_lags,
-        saving_paths.logging_file_path,
-        saving_paths.lag_mi_df_path,
-        num_bins,
-        num_files_for_checkpoint,
-    )
+    if not saving_paths.lag_mi_df_path.exists():
+        compute_lag_mi_df_map(
+            lob_files_paths,
+            initial_lags,
+            saving_paths.logging_file_path,
+            saving_paths.lag_mi_df_path,
+            num_bins,
+            num_files_for_checkpoint,
+        )
 
     # Extract candidate lags
-    with open(saving_paths.lag_mi_df_path, "rb") as f:
-        lag_mi_df_map = pickle.load(f)
-    lag_mi_df_map = lag_mi_df_map["final"]
+    if (
+        saving_paths.interval_lags_path is None
+        or not saving_paths.interval_lags_path.exists()
+        or saving_paths.lag_candidates_path is None
+        or not saving_paths.lag_candidates_path.exists()
+    ):
+        with open(saving_paths.lag_mi_df_path, "rb") as f:
+            lag_mi_df_map = pickle.load(f)
+        lag_mi_df_map = lag_mi_df_map["final"]
 
-    end_excluded_intervals, candidate_lags = get_candidates_lags(
-        lag_mi_df_map, num_lags_to_select, initial_lags, saving_paths.images_folder_path
-    )
+        end_excluded_intervals, candidate_lags = get_candidates_lags(
+            lag_mi_df_map,
+            num_lags_to_select,
+            initial_lags,
+            saving_paths.images_folder_path,
+        )
 
-    if saving_paths.interval_lags_path is not None:
-        with open(saving_paths.interval_lags_path, "wb") as f:
-            pickle.dump(end_excluded_intervals, f)
-    if saving_paths.lag_candidates_path is not None:
-        with open(saving_paths.lag_candidates_path, "wb") as f:
-            pickle.dump(candidate_lags, f)
+        if saving_paths.interval_lags_path is not None:
+            with open(saving_paths.interval_lags_path, "wb") as f:
+                pickle.dump(end_excluded_intervals, f)
+        if saving_paths.lag_candidates_path is not None:
+            with open(saving_paths.lag_candidates_path, "wb") as f:
+                pickle.dump(candidate_lags, f)
+    else:
+        with open(saving_paths.lag_candidates_path, "rb") as f:
+            candidate_lags = pickle.load(f)
 
     # Compute lag mi df map for candidate lags
     lags = initial_lags.copy()

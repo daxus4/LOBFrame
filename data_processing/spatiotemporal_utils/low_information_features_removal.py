@@ -66,7 +66,6 @@ def get_lag_mi_df_map_without_pruned_features(
             lag_mi_df_map[lag], prev_avg_mi
         )
         result[lag] = pruned_df
-        prev_avg_mi = avg_mi
 
     return result
 

@@ -142,6 +142,25 @@ def is_already_finished(log_path: str, current_lags: List[int]) -> bool:
     if not any("Final save complete. Processing finished." in line for line in lines):
         return False
 
+    index_line_last_complete = max(
+        (
+            i
+            for i, line in enumerate(lines)
+            if "Final save complete. Processing finished." in line
+        ),
+        default=-1,
+    )
+    index_line_last_new_lags = max(
+        (
+            i
+            for i, line in enumerate(lines)
+            if "New lags detected:" in line and i > index_line_last_complete
+        ),
+        default=-1,
+    )
+    if index_line_last_complete < index_line_last_new_lags:
+        return False
+
     previous_lags = get_logged_lags(log_path)
 
     return set(current_lags).issubset(previous_lags)

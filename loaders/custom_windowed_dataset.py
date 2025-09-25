@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 
 from loaders.custom_dataset import CustomDataset
 
@@ -10,6 +9,7 @@ class CustomWindowedDataset(CustomDataset):
         dataset,
         learning_stage,
         windows_limits: list[tuple[int, int]],
+        window_index_cols_map: dict[int, np.ndarray],
         shuffling_seed,
         cache_size,
         lighten,
@@ -32,6 +32,7 @@ class CustomWindowedDataset(CustomDataset):
         """
         self.windows_limits = windows_limits
         self.last_lag = windows_limits[-1][1]
+        self.window_index_cols_map = window_index_cols_map
 
         super().__init__(
             dataset=dataset,
@@ -54,16 +55,21 @@ class CustomWindowedDataset(CustomDataset):
         return self.last_lag
 
     def get_window_data(self, cache_idx, start_idx):
-        columns_number = 20 if self.lighten else 40
         window_means = [
             self._get_single_window_mean(
-                start_idx, cache_idx, start_lag_window, end_lag_window, columns_number
+                start_idx,
+                cache_idx,
+                start_lag_window,
+                end_lag_window,
+                window_index,
             )
-            for (start_lag_window, end_lag_window) in self.windows_limits
+            for window_index, (start_lag_window, end_lag_window) in enumerate(
+                self.windows_limits
+            )
         ]
 
-        # Stack into new DataFrame, reverse order (decreasing by window number)
-        result = np.vstack(window_means[::-1])
+        # Stack into new array ready for st_hnn shape = (1, sum (for i in windows) num_features(i))
+        result = np.concatenate(window_means)
         return result
 
     def _get_single_window_mean(
@@ -72,15 +78,19 @@ class CustomWindowedDataset(CustomDataset):
         cache_idx: int,
         start_lag_window: int,
         end_lag_window: int,
-        columns_number: int,
-    ) -> pd.Series:
+        window_index: int,
+    ) -> np.ndarray:
         # + 1 in necessary; otherwise the window will be shifted by one in the past
         start_window_idx = start_idx - end_lag_window + 1
         end_window_idx = start_idx - start_lag_window + 1
+        mask = self.window_index_cols_map[window_index]
+
+        columns_number = 20 if self.lighten else 40
 
         window_df = self.cache_data[cache_idx][
             start_window_idx:end_window_idx, :columns_number
         ]
+        window_df = window_df[:, mask]
 
         return window_df.mean(axis=0)
 

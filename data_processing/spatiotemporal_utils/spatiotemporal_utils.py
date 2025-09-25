@@ -84,6 +84,30 @@ def get_cliques_connections(
     return connection_list
 
 
+def parse_col(c):
+    lag = re.search(r"_lag(\d+)", c)
+    lag_num = int(lag.group(1)) if lag else 0
+    c_clean = c.split("_lag")[0]
+    match = re.match(r"(ASKs|ASKp|BIDs|BIDp)(\d+)", c_clean)
+    if match:
+        prefix, level = match.groups()
+        return prefix, int(level), lag_num
+    return c, 0, lag_num
+
+
+def sort_key(c):
+    if "Target" in c:
+        return (99, 99, 99)  # Put target columns at the end
+
+    order = ["ASKs", "ASKp", "BIDs", "BIDp"]
+    prefix, level, lag_num = parse_col(c)
+    return (
+        lag_num,  # non-lagged first
+        level,  # by level number
+        order.index(prefix) if prefix in order else 99,  # by prefix order
+    )
+
+
 def get_spatiotemporal_mi_matrix(
     lob_files_paths: list[Path],
     initial_lags: list[int],
@@ -91,7 +115,7 @@ def get_spatiotemporal_mi_matrix(
     num_files_for_checkpoint: int,
     num_lags_to_select: int,
     saving_paths: SpatiotemporalMatrixPaths,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, dict[int, np.ndarray]]:
     # Compute lag mi df map for initial lags to check auto-MI
     if not saving_paths.lag_mi_df_path.exists():
         compute_lag_mi_df_map(
@@ -150,6 +174,12 @@ def get_spatiotemporal_mi_matrix(
         lag_mi_df_map = pickle.load(f)
     lag_mi_df_map = lag_mi_df_map["final"]
 
+    index_lag_column_names_map = dict()
+    for i, candidate_lag in enumerate(sorted(candidate_lags)):
+        index_lag_column_names_map[i] = sorted(
+            lag_mi_df_map[candidate_lag].columns.tolist(), key=sort_key
+        )
+
     pruned_lag_mi_df_map = get_lag_mi_df_map_without_low_correlated_features(
         lag_mi_df_map, candidate_lags
     )
@@ -157,34 +187,21 @@ def get_spatiotemporal_mi_matrix(
         with open(saving_paths.pruned_lag_mi_df_path, "wb") as f:
             pickle.dump(pruned_lag_mi_df_map, f)
 
+    # get numpy array true/false for all columns if are pruned or not for each candidate lag
+    index_lag_not_pruned_cols_map = dict()
+    for i, candidate_lag in enumerate(sorted(candidate_lags)):
+        pruned_cols = sorted(
+            pruned_lag_mi_df_map[candidate_lag].columns.tolist(), key=sort_key
+        )
+        not_pruned_cols_mask = [
+            col in pruned_cols for col in index_lag_column_names_map[i]
+        ]
+        index_lag_not_pruned_cols_map[i] = np.array(not_pruned_cols_mask)
+
     # Create spatiotemporal matrix
     spatiotemporal_df = get_spatiotemporal_df(pruned_lag_mi_df_map)
 
-    return spatiotemporal_df
-
-
-def parse_col(c):
-    lag = re.search(r"_lag(\d+)", c)
-    lag_num = int(lag.group(1)) if lag else 0
-    c_clean = c.split("_lag")[0]
-    match = re.match(r"(ASKs|ASKp|BIDs|BIDp)(\d+)", c_clean)
-    if match:
-        prefix, level = match.groups()
-        return prefix, int(level), lag_num
-    return c, 0, lag_num
-
-
-def sort_key(c):
-    if "Target" in c:
-        return (99, 99, 99)  # Put target columns at the end
-
-    order = ["ASKs", "ASKp", "BIDs", "BIDp"]
-    prefix, level, lag_num = parse_col(c)
-    return (
-        lag_num,  # non-lagged first
-        level,  # by level number
-        order.index(prefix) if prefix in order else 99,  # by prefix order
-    )
+    return spatiotemporal_df, index_lag_not_pruned_cols_map
 
 
 def get_spatiotemporal_tmfg(
@@ -194,8 +211,8 @@ def get_spatiotemporal_tmfg(
     num_files_for_checkpoint: int,
     num_lags_to_select: int,
     saving_paths: SpatiotemporalMatrixPaths,
-) -> Tuple[GraphHomologicalStructure, List, List, np.ndarray]:
-    spatiotemporal_df = get_spatiotemporal_mi_matrix(
+) -> Tuple[GraphHomologicalStructure, List, List, np.ndarray, dict[int, np.ndarray]]:
+    spatiotemporal_df, index_lag_not_pruned_cols_map = get_spatiotemporal_mi_matrix(
         lob_files_paths,
         initial_lags,
         num_bins,
@@ -210,6 +227,10 @@ def get_spatiotemporal_tmfg(
     spatiotemporal_df = spatiotemporal_df[
         sorted(spatiotemporal_df.columns, key=sort_key)
     ].copy()
+
+    spatiotemporal_df = spatiotemporal_df.reindex(
+        sorted(spatiotemporal_df.index, key=sort_key)
+    )
 
     model_all = TMFG()
     cliques_all, seps_all, adj_matrix_all = model_all.fit_transform(
@@ -237,6 +258,7 @@ def get_spatiotemporal_tmfg(
         original_cliques_all,
         original_seps_all,
         adj_matrix_all,
+        index_lag_not_pruned_cols_map,
     )
 
 
@@ -308,15 +330,19 @@ def execute_spatiotemporal_tmfg_pipeline(
         images_folder_path=Path(images_folder_path_dir),
     )
 
-    homological_structure, original_cliques_all, original_seps_all, adj_matrix_all = (
-        get_spatiotemporal_tmfg(
-            lob_files_paths,
-            model_hyperparameters["st_hnn_initial_lags"],
-            NUM_BINS,
-            NUM_FILES_FOR_CHECKPOINT,
-            model_hyperparameters["st_hnn_number_past_lags"],
-            saving_paths,
-        )
+    (
+        homological_structure,
+        original_cliques_all,
+        original_seps_all,
+        adj_matrix_all,
+        index_lag_not_pruned_cols_map,
+    ) = get_spatiotemporal_tmfg(
+        lob_files_paths,
+        model_hyperparameters["st_hnn_initial_lags"],
+        NUM_BINS,
+        NUM_FILES_FOR_CHECKPOINT,
+        model_hyperparameters["st_hnn_number_past_lags"],
+        saving_paths,
     )
 
     homological_structure_dataset = {
@@ -324,6 +350,7 @@ def execute_spatiotemporal_tmfg_pipeline(
         "original_cliques_all": original_cliques_all,
         "original_seps_all": original_seps_all,
         "adj_matrix_all": adj_matrix_all,
+        "window_index_cols_map": index_lag_not_pruned_cols_map,
     }
 
     torch.save(homological_structure_dataset, homological_structure_path)

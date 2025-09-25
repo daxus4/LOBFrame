@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, Dataset
 from utils import detect_changing_points
 
 
-class CustomDataset(Dataset):
+class CustomTimeseriesDataset(Dataset):
     def __init__(
         self,
         dataset,
@@ -337,7 +337,7 @@ class CustomDataset(Dataset):
 """
 if __name__ == "__main__":
     # Create dataset and DataLoader with random shuffling
-    dataset = CustomDataset(
+    dataset = CustomTimeseriesDataset(
         dataset="nasdaq",
         learning_stage="training",
         window_size=100,

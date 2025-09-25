@@ -583,6 +583,12 @@ def parse_args() -> Any:
         default=20,
         help="Number of past lags to be used in the spatiotemporal hnn model.",
     )
+    parser.add_argument(
+        "--num_convolutional_channels_sthnn",
+        type=int,
+        default=32,
+        help="Number of convolutional channels to be used in the sthnn model.",
+    )
     # Trading hyperparameters
     parser.add_argument(
         "--initial_cash",

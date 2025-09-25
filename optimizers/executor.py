@@ -1,6 +1,8 @@
+import os
 import pickle
 import shutil
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
@@ -8,7 +10,7 @@ from data_processing.spatiotemporal_utils.constants import (
     INTERMEDIATE_FILES_SUBFOLDER_NAME,
     SAVING_FOLDER_NAME,
 )
-from loaders.custom_dataset import CustomDataset
+from loaders.custom_timeserie_dataset import CustomTimeseriesDataset
 from loaders.custom_windowed_dataset import CustomWindowedDataset
 from loggers import logger
 from models.AxialLob.axiallob import AxialLOB
@@ -45,29 +47,38 @@ class Executor:
             get_training_test_stocks_as_string(general_hyperparameters)
         )
 
-        if self.torch_dataset_preparation:
+        spatiotemporal_executor = general_hyperparameters["model"] == "sthnn"
+        if self.torch_dataset_preparation and not spatiotemporal_executor:
             create_tree(
                 f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/{model_hyperparameters['prediction_horizon']}/"
             )
+        elif self.torch_dataset_preparation and spatiotemporal_executor:
+            if not os.path.exists(
+                f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/{model_hyperparameters['prediction_horizon']}/"
+            ):
+                os.makedirs(
+                    f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/{model_hyperparameters['prediction_horizon']}/"
+                )
 
-        spatiotemporal_executor = general_hyperparameters["model"] == "sthnn"
         training_dataset_name = (
-            "training_dataset_sthnn.pt"
+            f"training_dataset_sthnn_{self.experiment_id}.pt"
             if spatiotemporal_executor
             else "training_dataset.pt"
         )
         validation_dataset_name = (
-            "validation_dataset_sthnn.pt"
+            f"validation_dataset_sthnn_{self.experiment_id}.pt"
             if spatiotemporal_executor
             else "validation_dataset.pt"
         )
         test_dataset_backtest_name = (
-            "test_dataset_backtest_sthnn.pt"
+            f"test_dataset_backtest_sthnn_{self.experiment_id}.pt"
             if spatiotemporal_executor
             else "test_dataset_backtest.pt"
         )
         test_dataset_name = (
-            "test_dataset_sthnn.pt" if spatiotemporal_executor else "test_dataset.pt"
+            f"test_dataset_sthnn_{self.experiment_id}.pt"
+            if spatiotemporal_executor
+            else "test_dataset.pt"
         )
 
         if general_hyperparameters["model"] == "deeplob":
@@ -94,25 +105,32 @@ class Executor:
             homological_structures = torch.load(
                 f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/complete_homological_structures.pt"
             )
+
             self.model = Complete_HCNN(
                 lighten=model_hyperparameters["lighten"],
                 homological_structures=homological_structures,
             )
 
         elif general_hyperparameters["model"] == "sthnn":
-            homological_structures = torch.load(
+            homological_structures_map = torch.load(
                 f"./{SAVING_FOLDER_NAME}/{self.training_stocks_string}/experiment_id_{experiment_id}/st_hnn_homological_structure.pt"
             )
+            homological_structures = homological_structures_map["homological_structure"]
+            window_index_cols_map = homological_structures_map["window_index_cols_map"]
+            window_index_cols_map = {
+                k: np.repeat(v, 2) for k, v in window_index_cols_map.items()
+            }
             end_excluded_interval_windows = pickle.load(
                 open(
                     f"./{SAVING_FOLDER_NAME}/{self.training_stocks_string}/experiment_id_{experiment_id}/{INTERMEDIATE_FILES_SUBFOLDER_NAME}/interval_lags.pkl",
                     "rb",
                 )
             )
+
             self.model = SpatioTemporalHNN(
                 homological_structure=homological_structures,
                 num_convolutional_channels=model_hyperparameters[
-                    "num_convolutional_channels"
+                    "num_convolutional_channels_sthnn"
                 ],
                 lighten=model_hyperparameters["lighten"],
                 num_classes=len(general_hyperparameters["targets_type"]),
@@ -125,6 +143,7 @@ class Executor:
                     dataset=general_hyperparameters["dataset"],
                     learning_stage="training",
                     windows_limits=end_excluded_interval_windows,
+                    window_index_cols_map=window_index_cols_map,
                     shuffling_seed=model_hyperparameters["shuffling_seed"],
                     cache_size=1,
                     lighten=model_hyperparameters["lighten"],
@@ -139,7 +158,7 @@ class Executor:
                 )
 
             else:
-                dataset = CustomDataset(
+                dataset = CustomTimeseriesDataset(
                     dataset=general_hyperparameters["dataset"],
                     learning_stage="training",
                     window_size=model_hyperparameters["history_length"],
@@ -181,6 +200,7 @@ class Executor:
                     dataset=general_hyperparameters["dataset"],
                     learning_stage="validation",
                     windows_limits=end_excluded_interval_windows,
+                    window_index_cols_map=window_index_cols_map,
                     shuffling_seed=model_hyperparameters["shuffling_seed"],
                     cache_size=1,
                     lighten=model_hyperparameters["lighten"],
@@ -193,7 +213,7 @@ class Executor:
                     target_stocks=general_hyperparameters["target_stocks"],
                 )
             else:
-                dataset = CustomDataset(
+                dataset = CustomTimeseriesDataset(
                     dataset=general_hyperparameters["dataset"],
                     learning_stage="validation",
                     window_size=model_hyperparameters["history_length"],
@@ -236,6 +256,7 @@ class Executor:
                     dataset=general_hyperparameters["dataset"],
                     learning_stage="test",
                     windows_limits=end_excluded_interval_windows,
+                    window_index_cols_map=window_index_cols_map,
                     shuffling_seed=model_hyperparameters["shuffling_seed"],
                     cache_size=1,
                     lighten=model_hyperparameters["lighten"],
@@ -249,7 +270,7 @@ class Executor:
                     target_stocks=general_hyperparameters["target_stocks"],
                 )
             else:
-                dataset = CustomDataset(
+                dataset = CustomTimeseriesDataset(
                     dataset=general_hyperparameters["dataset"],
                     learning_stage="test",
                     window_size=model_hyperparameters["history_length"],
@@ -278,6 +299,7 @@ class Executor:
                     dataset=general_hyperparameters["dataset"],
                     learning_stage="test",
                     windows_limits=end_excluded_interval_windows,
+                    window_index_cols_map=window_index_cols_map,
                     shuffling_seed=model_hyperparameters["shuffling_seed"],
                     cache_size=1,
                     lighten=model_hyperparameters["lighten"],
@@ -290,7 +312,7 @@ class Executor:
                     target_stocks=general_hyperparameters["target_stocks"],
                 )
             else:
-                dataset = CustomDataset(
+                dataset = CustomTimeseriesDataset(
                     dataset=general_hyperparameters["dataset"],
                     learning_stage="test",
                     window_size=model_hyperparameters["history_length"],

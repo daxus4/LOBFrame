@@ -82,7 +82,7 @@ def post_trading_analysis(
         general_hyperparameters
     )
     test_dataset_backtest_name = (
-        "test_dataset_backtest_sthnn.pt"
+        f"test_dataset_backtest_sthnn_{experiment_id}.pt"
         if general_hyperparameters["model"] == "sthnn"
         else "test_dataset_backtest.pt"
     )

@@ -526,7 +526,7 @@ def parse_args() -> Any:
     parser.add_argument(
         "--num_workers",
         type=int,
-        default=1,  # TODO: PUT TO 1 IF DONT WORK
+        default=8,
         help="Number of workers to be used by the dataloader.",
     )
     parser.add_argument(
@@ -568,7 +568,7 @@ def parse_args() -> Any:
     parser.add_argument(
         "--patience",
         type=int,
-        default=10,
+        default=15,
         help="Patience to be used in the training stage.",
     )
     parser.add_argument(

@@ -334,7 +334,6 @@ class CustomTimeseriesDataset(Dataset):
             raise e
 
 
-"""
 if __name__ == "__main__":
     # Create dataset and DataLoader with random shuffling
     dataset = CustomTimeseriesDataset(
@@ -348,14 +347,18 @@ if __name__ == "__main__":
         targets_type="raw",
         all_horizons=[5, 10, 30, 50, 100],
         prediction_horizon=100,
-        balanced_dataloader=False,
-        training_stocks=["CHTR"],
-        validation_stocks=["CHTR"],
-        target_stocks=["CHTR"]
+        balanced_dataloader=True,
+        training_stocks=["CSCO"],
+        validation_stocks=["CSCO"],
+        target_stocks=["CSCO"],
     )
 
     dataloader = DataLoader(
-        dataset, batch_size=32, shuffle=False, num_workers=8, drop_last=True, sampler=dataset.glob_indices
+        dataset,
+        batch_size=32,
+        shuffle=False,
+        num_workers=0,
+        sampler=dataset.glob_indices,
     )
 
     print(len(dataloader))
@@ -366,8 +369,10 @@ if __name__ == "__main__":
         # Train your model using batch_data and batch_labels
         # print(batch_labels.tolist())
         complete_list.extend(batch_labels.tolist())
-        #print(batch_data.shape, batch_labels.shape)
+        # print(batch_data.shape, batch_labels.shape)
 
     plt.hist(complete_list)
-    plt.show()
-"""
+    complete_list = np.array(complete_list)
+    print("Labels histogram:")
+    print(np.bincount(complete_list))
+    plt.savefig("histogram.png")

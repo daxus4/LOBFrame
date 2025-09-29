@@ -31,7 +31,10 @@ class CustomWindowedDataset(CustomDataset):
         - Window 3: 5,6,7,8,9
         """
         self.windows_limits = windows_limits
-        self.last_lag = windows_limits[-1][1]
+        self.last_lag = windows_limits[-1][
+            1
+        ]  # probabilmente qui va aggiunto un piu 2. pero devo controllare poi cosa succede in process_df di custom_dataset.
+        # Attenzione che forse ci sono stronzate nel codice di daniel, quindi provo a guardare anche quello di anto
         self.window_index_cols_map = window_index_cols_map
 
         super().__init__(
@@ -80,9 +83,9 @@ class CustomWindowedDataset(CustomDataset):
         end_lag_window: int,
         window_index: int,
     ) -> np.ndarray:
-        # + 1 in necessary; otherwise the window will be shifted by one in the past
-        start_window_idx = start_idx - end_lag_window + 1
-        end_window_idx = start_idx - start_lag_window + 1
+        start_window_idx = start_idx + (self.last_lag - end_lag_window)
+        end_window_idx = start_idx + (self.last_lag - start_lag_window)
+
         mask = self.window_index_cols_map[window_index]
 
         columns_number = 20 if self.lighten else 40
@@ -92,23 +95,37 @@ class CustomWindowedDataset(CustomDataset):
         ]
         window_df = window_df[:, mask]
 
+        if window_df.size <= 0:
+            raise ValueError(
+                f"Window df has shape 0. start_window_idx: {start_window_idx}, end_window_idx: {end_window_idx}, mask: {mask}, window_index: {window_index}, start_idx: {start_idx}, cache_idx: {cache_idx}"
+            )
         return window_df.mean(axis=0)
 
 
-"""if __name__ == "__main__":
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    from torch.utils.data import DataLoader
+
     # Create dataset and DataLoader with random shuffling
     dataset = CustomWindowedDataset(
         dataset="nasdaq",
         learning_stage="training",
         windows_limits=[(0, 1), (1, 3), (3, 7), (7, 15), (15, 31)],
+        window_index_cols_map={
+            0: np.arange(20),  # First window uses all columns
+            1: np.arange(18),  # Second window uses all columns
+            2: np.arange(16),  # Third window uses all columns
+            3: np.arange(14),  # Fourth window uses all columns
+            4: np.arange(12),  # Fifth window uses all columns
+        },
         shuffling_seed=42,
         cache_size=1,
         lighten=True,
-        threshold=32,
+        threshold=0.01,
         targets_type="raw",
-        all_horizons=[5, 10, 30, 50, 100],
+        all_horizons=[10, 50, 100],
         prediction_horizon=100,
-        balanced_dataloader=False,
+        balanced_dataloader=True,
         training_stocks=["CSCO"],
         validation_stocks=["CSCO"],
         target_stocks=["CSCO"],
@@ -118,8 +135,7 @@ class CustomWindowedDataset(CustomDataset):
         dataset,
         batch_size=32,
         shuffle=False,
-        num_workers=8,
-        drop_last=True,
+        num_workers=0,
         sampler=dataset.glob_indices,
     )
 
@@ -134,5 +150,7 @@ class CustomWindowedDataset(CustomDataset):
         # print(batch_data.shape, batch_labels.shape)
 
     plt.hist(complete_list)
-    plt.show()
-"""
+    complete_list = np.array(complete_list)
+    print("Labels histogram:")
+    print(np.bincount(complete_list))
+    plt.savefig("histogram.png")

@@ -102,9 +102,12 @@ class CustomDataset(Dataset, ABC):
             self.process_file(df)
 
     def process_file(self, df):
-        max_offset = self.get_max_offset()
+        label_offset = (
+            self.get_max_offset() - 1
+        )  # Offset to apply to the labels to match the inputs.
+
         self.cumulative_lengths.append(
-            self.cumulative_lengths[-1] + len(df) - max_offset
+            self.cumulative_lengths[-1] + len(df) - label_offset
         )
 
         if self.learning_stage == "training":
@@ -114,7 +117,7 @@ class CustomDataset(Dataset, ABC):
                 if self.targets_type == "raw"
                 else f"Smooth_Target_{self.prediction_horizon}"
             )
-            labels = df.iloc[:-max_offset, :][target_col]
+            labels = df.iloc[:-label_offset, :][target_col]
 
             for label, index in zip(
                 labels, range(self.cumulative_lengths[-2], self.cumulative_lengths[-1])
@@ -140,11 +143,11 @@ class CustomDataset(Dataset, ABC):
                 # Even having a balanced dataloader, labels would be messed up once computing models' inputs.
                 # Indeed, given an index 'i', the input rows go from 'i' to 'i + max_offset' and the label to be used is the one at 'i + max_offset'.
                 # Therefore, we must subtract the max_offset from the index of each sample.
-                if temp_index >= max_offset:
+                if temp_index >= label_offset:
                     if class_rep in class_groups:
-                        class_groups[class_rep].append(index - max_offset)
+                        class_groups[class_rep].append(index - label_offset)
                     else:
-                        class_groups[class_rep] = [index - max_offset]
+                        class_groups[class_rep] = [index - label_offset]
 
             if self.balanced_dataloader:
                 # Determine the desired number of samples per class (pseudo-balanced). We use the size of the less represented class.
@@ -243,8 +246,11 @@ class CustomDataset(Dataset, ABC):
                 ),
                 None,
             )
+
+            # Offset to apply to the labels to match the inputs.
+            label_offset = self.get_max_offset() - 1
             label = self.cache_data[self.current_cache_index][
-                start_index + self.get_max_offset(), 40:
+                start_index + label_offset, 40:
             ][position]
 
             if self.backtest is False:

@@ -374,3 +374,25 @@ def get_candidates_lags(
     )
 
     return end_excluded_intervals, candidates_x_values
+
+
+if __name__ == "__main__":
+    import pickle
+
+    from data_processing.spatiotemporal_utils.constants import INITIAL_LAGS_DEFAULT_STR
+
+    with open(
+        "/home/daxus/code/LOBFrame/spatiotemporal_folder/CSCO/experiment_id_1_250max_11windows/intermediate_files/lag_mi_df.pkl",
+        "rb",
+    ) as f:
+        lag_mi_df_map = pickle.load(f)
+    lag_mi_df_map = lag_mi_df_map["final"]
+
+    initial_lags = [int(x) for x in INITIAL_LAGS_DEFAULT_STR.split(",")]
+
+    end_excluded_intervals, candidates_x_values = get_candidates_lags(
+        lag_mi_df_map, num_lag_used=5, initial_lags=initial_lags
+    )
+
+    print("End excluded intervals:", end_excluded_intervals)
+    print("Candidate lags:", candidates_x_values)

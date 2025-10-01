@@ -167,3 +167,4 @@ spatiotemporal_folder/
 torch_datasets/
 lightning_logs/
 .vscode/
+slurm_run_files/

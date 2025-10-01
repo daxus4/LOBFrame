@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mutual_info_score
 
-from utils import load_nested_parquet, save_nested_parquet
+from utils import load_str_int_df, save_nested_parquet
 
 
 def get_logger(logging_file_path: Path) -> logging.Logger:
@@ -127,9 +127,10 @@ def get_weighted_lag_mi_df_map(
 
 
 def load_checkpoint_if_exists(filepath: Path) -> Dict[str, Dict[int, pd.DataFrame]]:
-    if filepath.exists():
-        checkpoint = load_nested_parquet(filepath)
-        return checkpoint.get("per_file", {})
+    manifest_file_path = filepath / "manifest.json"
+
+    if manifest_file_path.is_file():
+        return load_str_int_df(filepath)
 
     return {}
 
@@ -199,13 +200,13 @@ def get_file_lag_mi_map(
         logger.info(f"Loading checkpoint from {checkpoint_path}")
 
     for i, file in enumerate(lob_files):
-        file_key = str(file)
+        file_key = file.stem
         existing_lags = file_results.get(file_key, {}).keys()
         needed_lags = list(set(lags) - set(existing_lags))
 
         if needed_lags:
             logger.info(f"Processing {file.name} (index {i}), new lags: {needed_lags}")
-            with concurrent.futures.ProcessPoolExecutor(6) as executor:
+            with concurrent.futures.ProcessPoolExecutor(8) as executor:
                 results = list(
                     executor.map(
                         get_mi_dfs_from_path,
@@ -220,7 +221,7 @@ def get_file_lag_mi_map(
             file_results[file_key].update(lag_map)
 
         if i % num_files_for_checkpoint == 0:
-            save_nested_parquet({"per_file": file_results}, checkpoint_path)
+            save_nested_parquet(file_results, checkpoint_path)
             logger.info(f"Checkpoint saved after processing file_{i}.")
 
     return file_results
@@ -247,10 +248,12 @@ def compute_lag_mi_df_map(
     lags: list[int],
     logging_file_path: Path,
     saving_folder_path: Path,
+    saving_folder_checkpoint_path: Path,
     num_bins: int,
     num_files_for_checkpoint: int,
 ) -> None:
     saving_folder_path.mkdir(parents=True, exist_ok=True)
+    saving_folder_checkpoint_path.mkdir(parents=True, exist_ok=True)
     logging_file_path.parent.mkdir(parents=True, exist_ok=True)
 
     logger = get_logger(logging_file_path)
@@ -278,7 +281,7 @@ def compute_lag_mi_df_map(
 
     file_lag_mi_map = get_file_lag_mi_map(
         lob_files_paths,
-        saving_folder_path,
+        saving_folder_checkpoint_path,
         current_lags,
         num_bins,
         logger,
@@ -286,9 +289,7 @@ def compute_lag_mi_df_map(
     )
     avg_file_lag_mi_map = get_averaged_file_lag_mi_map(file_lag_mi_map, current_lags)
 
-    save_nested_parquet(
-        {"per_file": file_lag_mi_map, "final": avg_file_lag_mi_map}, saving_folder_path
-    )
+    save_nested_parquet(avg_file_lag_mi_map, saving_folder_path)
 
     log_current_lags(current_lags, logger)
     logger.info("Final save complete. Processing finished.")

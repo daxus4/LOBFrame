@@ -34,16 +34,18 @@ from data_processing.spatiotemporal_utils.spatiotemporal_matrix_creation import 
 from models.HNN.hnn import GraphHomologicalStructure
 from utils import (
     dump_yaml_with_tuple,
+    get_intervals_as_native_int,
     get_training_test_stocks_as_string,
-    load_nested_parquet,
+    load_int_df,
     load_yaml_with_tuple,
-    save_intdict_parquet,
+    save_nested_parquet,
 )
 
 
 @dataclass
 class SpatiotemporalMatrixPaths:
-    lag_mi_df_path: Path
+    lag_mi_df_checkpoint_path: Path
+    lag_mi_df_final_path: Path
     logging_file_path: Path
     homological_structure_path: Path
     interval_lags_path: Path | None = None
@@ -122,12 +124,16 @@ def get_spatiotemporal_mi_matrix(
     saving_paths: SpatiotemporalMatrixPaths,
 ) -> tuple[pd.DataFrame, dict[int, np.ndarray]]:
     # Compute lag mi df map for initial lags to check auto-MI
-    if not saving_paths.lag_mi_df_path.exists():
+    lag_mi_df_map_manifest_file_path = (
+        saving_paths.lag_mi_df_final_path / "manifest.json"
+    )
+    if not lag_mi_df_map_manifest_file_path.is_file():
         compute_lag_mi_df_map(
             lob_files_paths,
             initial_lags,
             saving_paths.logging_file_path,
-            saving_paths.lag_mi_df_path,
+            saving_paths.lag_mi_df_final_path,
+            saving_paths.lag_mi_df_checkpoint_path,
             num_bins,
             num_files_for_checkpoint,
         )
@@ -139,8 +145,7 @@ def get_spatiotemporal_mi_matrix(
         or saving_paths.lag_candidates_path is None
         or not saving_paths.lag_candidates_path.exists()
     ):
-        lag_mi_df_map = load_nested_parquet(saving_paths.lag_mi_df_path)
-        lag_mi_df_map = lag_mi_df_map["final"]
+        lag_mi_df_map = load_int_df(saving_paths.lag_mi_df_path)
 
         end_excluded_intervals, candidate_lags = get_candidates_lags(
             lag_mi_df_map,
@@ -148,6 +153,9 @@ def get_spatiotemporal_mi_matrix(
             initial_lags,
             saving_paths.images_folder_path,
         )
+
+        end_excluded_intervals = get_intervals_as_native_int(end_excluded_intervals)
+        candidate_lags = [int(lag) for lag in candidate_lags]
 
         if saving_paths.interval_lags_path is not None:
             dump_yaml_with_tuple(
@@ -173,8 +181,7 @@ def get_spatiotemporal_mi_matrix(
     )
 
     # Remove low correlated features
-    lag_mi_df_map = load_nested_parquet(saving_paths.lag_mi_df_path)
-    lag_mi_df_map = lag_mi_df_map["final"]
+    lag_mi_df_map = load_int_df(saving_paths.lag_mi_df_path)
 
     index_lag_column_names_map = dict()
     for i, candidate_lag in enumerate(sorted(candidate_lags)):
@@ -186,7 +193,7 @@ def get_spatiotemporal_mi_matrix(
         lag_mi_df_map, candidate_lags
     )
     if saving_paths.pruned_lag_mi_df_path is not None:
-        save_intdict_parquet(pruned_lag_mi_df_map, saving_paths.pruned_lag_mi_df_path)
+        save_nested_parquet(pruned_lag_mi_df_map, saving_paths.pruned_lag_mi_df_path)
 
     # get numpy array true/false for all columns if are pruned or not for each candidate lag
     index_lag_not_pruned_cols_map = dict()
@@ -300,6 +307,10 @@ def execute_spatiotemporal_tmfg_pipeline(
     intermediate_files_path_dir = os.path.join(
         saving_path_dir, INTERMEDIATE_FILES_SUBFOLDER_NAME
     )
+    lag_mi_df_checkpoint_path = os.path.join(
+        intermediate_files_path_dir, "lag_mi_df_checkpoint"
+    )
+    lag_mi_df_final_path = os.path.join(intermediate_files_path_dir, "lag_mi_df_final")
     images_folder_path_dir = os.path.join(
         intermediate_files_path_dir, IMAGES_SUBFOLDER_NAME
     )
@@ -309,10 +320,13 @@ def execute_spatiotemporal_tmfg_pipeline(
 
     os.makedirs(saving_path_dir, exist_ok=True)
     os.makedirs(intermediate_files_path_dir, exist_ok=True)
+    os.makedirs(lag_mi_df_checkpoint_path, exist_ok=True)
+    os.makedirs(lag_mi_df_final_path, exist_ok=True)
     os.makedirs(images_folder_path_dir, exist_ok=True)
 
     saving_paths = SpatiotemporalMatrixPaths(
-        lag_mi_df_path=Path(os.path.join(intermediate_files_path_dir, "lag_mi_df")),
+        lag_mi_df_checkpoint_path=Path(lag_mi_df_checkpoint_path),
+        lag_mi_df_final_path=Path(lag_mi_df_final_path),
         logging_file_path=Path(
             os.path.join(intermediate_files_path_dir, "logging.txt")
         ),

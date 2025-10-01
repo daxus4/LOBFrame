@@ -1,9 +1,10 @@
 import argparse
+from collections.abc import Mapping
 import glob
 import json
 import os
 import shutil
-from typing import Any, List, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import pandas as pd
 import yaml
@@ -12,91 +13,93 @@ from data_processing.spatiotemporal_utils.constants import INITIAL_LAGS_DEFAULT_
 from loggers import logger
 
 
+def get_intervals_as_native_int(
+    intervals: List[Tuple[int, int]],
+) -> List[Tuple[int, int]]:
+    """
+    Convert a list of tuples of numbers (possibly numpy.int64) to
+    a list of tuples with native Python int.
+    """
+    return [(int(start), int(end)) for start, end in intervals]
+
+
 def save_nested_parquet(
-    data: dict[str, dict[int, pd.DataFrame]],
+    data: dict,
     folder: str,
     engine: str = "pyarrow",
     compression: str = "snappy",
 ) -> None:
     """
-    Save dict-of-dict-of-DataFrames into a folder with parquet files and a manifest.
+    Save arbitrarily nested dicts of DataFrames into a folder with parquet files and a manifest.json.
+    The manifest mirrors the nested dict structure, with filenames in place of DataFrames.
     """
     os.makedirs(folder, exist_ok=True)
-    manifest = {}
 
-    for g, group in data.items():
-        manifest[g] = {}
-        for name, df in group.items():
-            filename = f"{g}__{name}.parquet"
+    def _save(obj, prefix=""):
+        if isinstance(obj, pd.DataFrame):
+            # Unique filename based on path
+            filename = f"{prefix}.parquet"
             path = os.path.join(folder, filename)
+            obj.to_parquet(path, engine=engine, compression=compression, index=True)
+            return filename
+        elif isinstance(obj, Mapping):
+            return {
+                k: _save(v, f"{prefix}__{k}" if prefix else str(k))
+                for k, v in obj.items()
+            }
+        else:
+            raise TypeError(f"Unsupported type {type(obj)} at {prefix}")
 
-            # Save DataFrame with index preserved
-            df.to_parquet(path, engine=engine, compression=compression, index=True)
-            manifest[g][name] = filename
+    manifest = _save(data)
 
-    # Save manifest
     with open(os.path.join(folder, "manifest.json"), "w") as f:
         json.dump(manifest, f)
 
 
-def load_nested_parquet(
+def load_str_int_df(
     folder: str, engine: str = "pyarrow"
-) -> dict[str, dict[int, pd.DataFrame]]:
+) -> Dict[str, Dict[int, pd.DataFrame]]:
     """
-    Load dict-of-dict-of-DataFrames from a folder created by save_nested_parquet.
+    Load a dict[str, dict[int, pd.DataFrame]] saved with save_nested_parquet.
+    Converts second-level keys back to int.
     """
     with open(os.path.join(folder, "manifest.json"), "r") as f:
         manifest = json.load(f)
 
-    data = {}
-    for g, group in manifest.items():
-        data[g] = {}
-        for name, filename in group.items():
+    result = {}
+    for str_key, subdict in manifest.items():
+        if not isinstance(subdict, dict):
+            raise TypeError(f"Expected dict at level 2 for key {str_key}")
+        result[str_key] = {}
+        for sub_key, filename in subdict.items():
+            try:
+                int_key = int(sub_key)
+            except ValueError:
+                raise ValueError(f"Cannot convert key {sub_key} to int")
             path = os.path.join(folder, filename)
-            data[g][int(name)] = pd.read_parquet(path, engine=engine)
-    return data
+            result[str_key][int_key] = pd.read_parquet(path, engine=engine)
+
+    return result
 
 
-def save_intdict_parquet(
-    data: dict[int, pd.DataFrame],
-    folder: str,
-    engine: str = "pyarrow",
-    compression: str = "snappy",
-):
+def load_int_df(folder: str, engine: str = "pyarrow") -> Dict[int, pd.DataFrame]:
     """
-    Save dict[int, DataFrame] into a folder with parquet files and a manifest.json.
-    Each DataFrame is stored with its index preserved.
-    """
-    os.makedirs(folder, exist_ok=True)
-    manifest = {}
-
-    for key, df in data.items():
-        filename = f"{key}.parquet"
-        path = os.path.join(folder, filename)
-
-        df.to_parquet(path, engine=engine, compression=compression, index=True)
-        manifest[key] = filename
-
-    # Save manifest (keys must be strings in JSON)
-    with open(os.path.join(folder, "manifest.json"), "w") as f:
-        json.dump(manifest, f)
-
-
-def load_intdict_parquet(
-    folder: str, engine: str = "pyarrow"
-) -> dict[int, pd.DataFrame]:
-    """
-    Load dict[int, DataFrame] from a folder created by save_intdict_parquet.
+    Load a dict[int, pd.DataFrame] saved with save_nested_parquet.
+    Converts top-level keys back to int.
     """
     with open(os.path.join(folder, "manifest.json"), "r") as f:
         manifest = json.load(f)
 
-    data = {}
+    result = {}
     for key_str, filename in manifest.items():
-        key = int(key_str)
+        try:
+            int_key = int(key_str)
+        except ValueError:
+            raise ValueError(f"Cannot convert key {key_str} to int")
         path = os.path.join(folder, filename)
-        data[key] = pd.read_parquet(path, engine=engine)
-    return data
+        result[int_key] = pd.read_parquet(path, engine=engine)
+
+    return result
 
 
 def load_yaml(path: str, subsection: str) -> dict[str, Any]:

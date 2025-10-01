@@ -29,7 +29,6 @@ from optimizers.lightning_batch_gd import BatchGDManager
 from utils import (
     create_tree,
     get_training_test_stocks_as_string,
-    load_nested_parquet,
     load_yaml_with_tuple,
 )
 

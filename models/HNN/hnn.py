@@ -80,6 +80,23 @@ class GraphHomologicalStructure:
             ),
         )
 
+    def to_dict(self) -> dict:
+        return {
+            "nodes_to_edges_connections": self.nodes_to_edges_connections,
+            "edges_to_triangles_connections": self.edges_to_triangles_connections,
+            "triangles_to_tetrahedra_connections": self.triangles_to_tetrahedra_connections,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "GraphHomologicalStructure":
+        return cls(
+            nodes_to_edges_connections=data["nodes_to_edges_connections"],
+            edges_to_triangles_connections=data["edges_to_triangles_connections"],
+            triangles_to_tetrahedra_connections=data[
+                "triangles_to_tetrahedra_connections"
+            ],
+        )
+
 
 class HNN(nn.Module):
     def __init__(

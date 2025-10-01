@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mutual_info_score
 
+from utils import load_nested_parquet, save_nested_parquet
+
 
 def get_logger(logging_file_path: Path) -> logging.Logger:
     logger = logging.getLogger(f"compute_lag_mi_df_map")
@@ -126,8 +128,8 @@ def get_weighted_lag_mi_df_map(
 
 def load_checkpoint_if_exists(filepath: Path) -> Dict[str, Dict[int, pd.DataFrame]]:
     if filepath.exists():
-        with open(filepath, "rb") as f:
-            return pickle.load(f)["per_file"]
+        checkpoint = load_nested_parquet(filepath)
+        return checkpoint.get("per_file", {})
 
     return {}
 
@@ -218,8 +220,7 @@ def get_file_lag_mi_map(
             file_results[file_key].update(lag_map)
 
         if i % num_files_for_checkpoint == 0:
-            with open(checkpoint_path, "wb") as f:
-                pickle.dump({"per_file": file_results}, f)
+            save_nested_parquet({"per_file": file_results}, checkpoint_path)
             logger.info(f"Checkpoint saved after processing file_{i}.")
 
     return file_results
@@ -245,11 +246,11 @@ def compute_lag_mi_df_map(
     lob_files_paths: list[Path],
     lags: list[int],
     logging_file_path: Path,
-    saving_path: Path,
+    saving_folder_path: Path,
     num_bins: int,
     num_files_for_checkpoint: int,
 ) -> None:
-    saving_path.parent.mkdir(parents=True, exist_ok=True)
+    saving_folder_path.mkdir(parents=True, exist_ok=True)
     logging_file_path.parent.mkdir(parents=True, exist_ok=True)
 
     logger = get_logger(logging_file_path)
@@ -277,7 +278,7 @@ def compute_lag_mi_df_map(
 
     file_lag_mi_map = get_file_lag_mi_map(
         lob_files_paths,
-        saving_path,
+        saving_folder_path,
         current_lags,
         num_bins,
         logger,
@@ -285,8 +286,9 @@ def compute_lag_mi_df_map(
     )
     avg_file_lag_mi_map = get_averaged_file_lag_mi_map(file_lag_mi_map, current_lags)
 
-    with open(saving_path, "wb") as f:
-        pickle.dump({"per_file": file_lag_mi_map, "final": avg_file_lag_mi_map}, f)
+    save_nested_parquet(
+        {"per_file": file_lag_mi_map, "final": avg_file_lag_mi_map}, saving_folder_path
+    )
 
     log_current_lags(current_lags, logger)
     logger.info("Final save complete. Processing finished.")

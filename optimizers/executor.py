@@ -19,13 +19,19 @@ from models.CNN2.cnn2 import CNN2
 from models.CompleteHCNN.complete_hcnn import Complete_HCNN
 from models.DeepLob.deeplob import DeepLOB
 from models.DLA.DLA import DLA
+from models.HNN.hnn import GraphHomologicalStructure
 from models.HNN.spatio_temporal_hnn import SpatioTemporalHNN
 from models.iTransformer.itransformer import ITransformer
 from models.LobTransformer.lobtransformer import LobTransformer
 from models.TABL.bin_tabl import BiN_BTABL, BiN_CTABL
 from models.Transformer.transformer import Transformer
 from optimizers.lightning_batch_gd import BatchGDManager
-from utils import create_tree, get_training_test_stocks_as_string
+from utils import (
+    create_tree,
+    get_training_test_stocks_as_string,
+    load_nested_parquet,
+    load_yaml_with_tuple,
+)
 
 
 class Executor:
@@ -112,19 +118,22 @@ class Executor:
             )
 
         elif general_hyperparameters["model"] == "sthnn":
-            homological_structures_map = torch.load(
-                f"./{SAVING_FOLDER_NAME}/{self.training_stocks_string}/experiment_id_{experiment_id}/st_hnn_homological_structure.pt"
+            homological_structures_map = load_yaml_with_tuple(
+                f"./{SAVING_FOLDER_NAME}/{self.training_stocks_string}/experiment_id_{experiment_id}/st_hnn_homological_structure.yml"
             )
-            homological_structures = homological_structures_map["homological_structure"]
+
+            homological_structures_dict = homological_structures_map[
+                "homological_structure"
+            ]
+            homological_structures = GraphHomologicalStructure.from_dict(
+                homological_structures_dict
+            )
             window_index_cols_map = homological_structures_map["window_index_cols_map"]
             window_index_cols_map = {
                 k: np.repeat(v, 2) for k, v in window_index_cols_map.items()
             }
-            end_excluded_interval_windows = pickle.load(
-                open(
-                    f"./{SAVING_FOLDER_NAME}/{self.training_stocks_string}/experiment_id_{experiment_id}/{INTERMEDIATE_FILES_SUBFOLDER_NAME}/interval_lags.pkl",
-                    "rb",
-                )
+            end_excluded_interval_windows = load_yaml_with_tuple(
+                f"./{SAVING_FOLDER_NAME}/{self.training_stocks_string}/experiment_id_{experiment_id}/{INTERMEDIATE_FILES_SUBFOLDER_NAME}/interval_lags.yml"
             )
 
             self.model = SpatioTemporalHNN(

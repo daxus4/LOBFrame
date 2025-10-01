@@ -1,6 +1,6 @@
 import glob
+import json
 import os
-import pickle
 import re
 from dataclasses import dataclass
 from itertools import chain, combinations
@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Set, Tuple
 import networkx as nx
 import numpy as np
 import pandas as pd
-import torch
 from fast_tmfg import TMFG
 
 from data_processing.spatiotemporal_utils.candidate_lags_extraction import (
@@ -33,7 +32,13 @@ from data_processing.spatiotemporal_utils.spatiotemporal_matrix_creation import 
     get_spatiotemporal_df,
 )
 from models.HNN.hnn import GraphHomologicalStructure
-from utils import get_training_test_stocks_as_string
+from utils import (
+    dump_yaml_with_tuple,
+    get_training_test_stocks_as_string,
+    load_nested_parquet,
+    load_yaml_with_tuple,
+    save_intdict_parquet,
+)
 
 
 @dataclass
@@ -134,8 +139,7 @@ def get_spatiotemporal_mi_matrix(
         or saving_paths.lag_candidates_path is None
         or not saving_paths.lag_candidates_path.exists()
     ):
-        with open(saving_paths.lag_mi_df_path, "rb") as f:
-            lag_mi_df_map = pickle.load(f)
+        lag_mi_df_map = load_nested_parquet(saving_paths.lag_mi_df_path)
         lag_mi_df_map = lag_mi_df_map["final"]
 
         end_excluded_intervals, candidate_lags = get_candidates_lags(
@@ -146,14 +150,13 @@ def get_spatiotemporal_mi_matrix(
         )
 
         if saving_paths.interval_lags_path is not None:
-            with open(saving_paths.interval_lags_path, "wb") as f:
-                pickle.dump(end_excluded_intervals, f)
+            dump_yaml_with_tuple(
+                end_excluded_intervals, saving_paths.interval_lags_path
+            )
         if saving_paths.lag_candidates_path is not None:
-            with open(saving_paths.lag_candidates_path, "wb") as f:
-                pickle.dump(candidate_lags, f)
+            dump_yaml_with_tuple(candidate_lags, saving_paths.lag_candidates_path)
     else:
-        with open(saving_paths.lag_candidates_path, "rb") as f:
-            candidate_lags = pickle.load(f)
+        candidate_lags = load_yaml_with_tuple(saving_paths.lag_candidates_path)
 
     # Compute lag mi df map for candidate lags
     lags = initial_lags.copy()
@@ -170,8 +173,7 @@ def get_spatiotemporal_mi_matrix(
     )
 
     # Remove low correlated features
-    with open(saving_paths.lag_mi_df_path, "rb") as f:
-        lag_mi_df_map = pickle.load(f)
+    lag_mi_df_map = load_nested_parquet(saving_paths.lag_mi_df_path)
     lag_mi_df_map = lag_mi_df_map["final"]
 
     index_lag_column_names_map = dict()
@@ -184,8 +186,7 @@ def get_spatiotemporal_mi_matrix(
         lag_mi_df_map, candidate_lags
     )
     if saving_paths.pruned_lag_mi_df_path is not None:
-        with open(saving_paths.pruned_lag_mi_df_path, "wb") as f:
-            pickle.dump(pruned_lag_mi_df_map, f)
+        save_intdict_parquet(pruned_lag_mi_df_map, saving_paths.pruned_lag_mi_df_path)
 
     # get numpy array true/false for all columns if are pruned or not for each candidate lag
     index_lag_not_pruned_cols_map = dict()
@@ -221,8 +222,9 @@ def get_spatiotemporal_tmfg(
         saving_paths,
     )
     if saving_paths.spatiotemporal_matrix_path is not None:
-        with open(saving_paths.spatiotemporal_matrix_path, "wb") as f:
-            pickle.dump(spatiotemporal_df, f)
+        spatiotemporal_df.to_csv(
+            saving_paths.spatiotemporal_matrix_path, sep="\t", index=True
+        )
 
     spatiotemporal_df = spatiotemporal_df[
         sorted(spatiotemporal_df.columns, key=sort_key)
@@ -302,7 +304,7 @@ def execute_spatiotemporal_tmfg_pipeline(
         intermediate_files_path_dir, IMAGES_SUBFOLDER_NAME
     )
     homological_structure_path = os.path.join(
-        saving_path_dir, "st_hnn_homological_structure.pt"
+        saving_path_dir, "st_hnn_homological_structure.yml"
     )
 
     os.makedirs(saving_path_dir, exist_ok=True)
@@ -310,22 +312,22 @@ def execute_spatiotemporal_tmfg_pipeline(
     os.makedirs(images_folder_path_dir, exist_ok=True)
 
     saving_paths = SpatiotemporalMatrixPaths(
-        lag_mi_df_path=Path(os.path.join(intermediate_files_path_dir, "lag_mi_df.pkl")),
+        lag_mi_df_path=Path(os.path.join(intermediate_files_path_dir, "lag_mi_df")),
         logging_file_path=Path(
             os.path.join(intermediate_files_path_dir, "logging.txt")
         ),
         homological_structure_path=homological_structure_path,
         interval_lags_path=Path(
-            os.path.join(intermediate_files_path_dir, "interval_lags.pkl")
+            os.path.join(intermediate_files_path_dir, "interval_lags.yml")
         ),
         lag_candidates_path=Path(
-            os.path.join(intermediate_files_path_dir, "lag_candidates.pkl")
+            os.path.join(intermediate_files_path_dir, "lag_candidates.yml")
         ),
         pruned_lag_mi_df_path=Path(
-            os.path.join(intermediate_files_path_dir, "pruned_lag_mi_df.pkl")
+            os.path.join(intermediate_files_path_dir, "pruned_lag_mi_df")
         ),
         spatiotemporal_matrix_path=Path(
-            os.path.join(intermediate_files_path_dir, "spatiotemporal_matrix.pkl")
+            os.path.join(intermediate_files_path_dir, "spatiotemporal_matrix.tsv")
         ),
         images_folder_path=Path(images_folder_path_dir),
     )
@@ -345,15 +347,17 @@ def execute_spatiotemporal_tmfg_pipeline(
         saving_paths,
     )
 
+    homological_structure_dict = homological_structure.to_dict()
+
     homological_structure_dataset = {
-        "homological_structure": homological_structure,
+        "homological_structure": homological_structure_dict,
         "original_cliques_all": original_cliques_all,
         "original_seps_all": original_seps_all,
         "adj_matrix_all": adj_matrix_all,
         "window_index_cols_map": index_lag_not_pruned_cols_map,
     }
 
-    torch.save(homological_structure_dataset, homological_structure_path)
+    dump_yaml_with_tuple(homological_structure_dataset, homological_structure_path)
     print("Spatiotemporal homological structures have been saved.")
 
 

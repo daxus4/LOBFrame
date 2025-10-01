@@ -1,15 +1,102 @@
 import argparse
 import glob
+import json
 import os
 import shutil
 from typing import Any, List, Union
 
-import numpy as np
 import pandas as pd
 import yaml
 
 from data_processing.spatiotemporal_utils.constants import INITIAL_LAGS_DEFAULT_STR
 from loggers import logger
+
+
+def save_nested_parquet(
+    data: dict[str, dict[int, pd.DataFrame]],
+    folder: str,
+    engine: str = "pyarrow",
+    compression: str = "snappy",
+) -> None:
+    """
+    Save dict-of-dict-of-DataFrames into a folder with parquet files and a manifest.
+    """
+    os.makedirs(folder, exist_ok=True)
+    manifest = {}
+
+    for g, group in data.items():
+        manifest[g] = {}
+        for name, df in group.items():
+            filename = f"{g}__{name}.parquet"
+            path = os.path.join(folder, filename)
+
+            # Save DataFrame with index preserved
+            df.to_parquet(path, engine=engine, compression=compression, index=True)
+            manifest[g][name] = filename
+
+    # Save manifest
+    with open(os.path.join(folder, "manifest.json"), "w") as f:
+        json.dump(manifest, f)
+
+
+def load_nested_parquet(
+    folder: str, engine: str = "pyarrow"
+) -> dict[str, dict[int, pd.DataFrame]]:
+    """
+    Load dict-of-dict-of-DataFrames from a folder created by save_nested_parquet.
+    """
+    with open(os.path.join(folder, "manifest.json"), "r") as f:
+        manifest = json.load(f)
+
+    data = {}
+    for g, group in manifest.items():
+        data[g] = {}
+        for name, filename in group.items():
+            path = os.path.join(folder, filename)
+            data[g][int(name)] = pd.read_parquet(path, engine=engine)
+    return data
+
+
+def save_intdict_parquet(
+    data: dict[int, pd.DataFrame],
+    folder: str,
+    engine: str = "pyarrow",
+    compression: str = "snappy",
+):
+    """
+    Save dict[int, DataFrame] into a folder with parquet files and a manifest.json.
+    Each DataFrame is stored with its index preserved.
+    """
+    os.makedirs(folder, exist_ok=True)
+    manifest = {}
+
+    for key, df in data.items():
+        filename = f"{key}.parquet"
+        path = os.path.join(folder, filename)
+
+        df.to_parquet(path, engine=engine, compression=compression, index=True)
+        manifest[key] = filename
+
+    # Save manifest (keys must be strings in JSON)
+    with open(os.path.join(folder, "manifest.json"), "w") as f:
+        json.dump(manifest, f)
+
+
+def load_intdict_parquet(
+    folder: str, engine: str = "pyarrow"
+) -> dict[int, pd.DataFrame]:
+    """
+    Load dict[int, DataFrame] from a folder created by save_intdict_parquet.
+    """
+    with open(os.path.join(folder, "manifest.json"), "r") as f:
+        manifest = json.load(f)
+
+    data = {}
+    for key_str, filename in manifest.items():
+        key = int(key_str)
+        path = os.path.join(folder, filename)
+        data[key] = pd.read_parquet(path, engine=engine)
+    return data
 
 
 def load_yaml(path: str, subsection: str) -> dict[str, Any]:
@@ -740,3 +827,51 @@ def get_training_test_stocks_as_string(general_hyperparameters):
     general_test_string = general_test_string[:-1]
 
     return general_training_string, general_test_string
+
+
+def dump_yaml_with_tuple(data: dict[str, Any], file_path: str) -> None:
+    """
+    Dump a dictionary to a YAML file, handling tuples by converting them to lists.
+
+    Args:
+        data (dict): The dictionary to be dumped.
+        file_path (str): The path to the output YAML file.
+
+    Returns:
+        None.
+    """
+
+    class TupleDumper(yaml.SafeDumper):
+        pass
+
+    def tuple_representer(dumper, data):
+        return dumper.represent_sequence("!tuple", data)
+
+    TupleDumper.add_representer(tuple, tuple_representer)
+
+    with open(file_path, "w") as file:
+        yaml.dump(data, file, Dumper=TupleDumper)
+
+
+def load_yaml_with_tuple(file_path: str) -> dict[str, Any]:
+    """
+    Load a YAML file, handling tuples by converting them from lists.
+
+    Args:
+        file_path (str): The path to the input YAML file.
+    Returns:
+        The loaded dictionary.
+    """
+
+    class TupleLoader(yaml.SafeLoader):
+        pass
+
+    def tuple_constructor(loader, node):
+        return tuple(loader.construct_sequence(node))
+
+    TupleLoader.add_constructor("!tuple", tuple_constructor)
+
+    with open(file_path, "r") as file:
+        data = yaml.load(file, Loader=TupleLoader)
+
+    return data

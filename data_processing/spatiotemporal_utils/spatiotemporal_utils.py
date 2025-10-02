@@ -145,7 +145,7 @@ def get_spatiotemporal_mi_matrix(
         or saving_paths.lag_candidates_path is None
         or not saving_paths.lag_candidates_path.exists()
     ):
-        lag_mi_df_map = load_int_df(saving_paths.lag_mi_df_path)
+        lag_mi_df_map = load_int_df(saving_paths.lag_mi_df_final_path)
 
         end_excluded_intervals, candidate_lags = get_candidates_lags(
             lag_mi_df_map,
@@ -175,13 +175,14 @@ def get_spatiotemporal_mi_matrix(
         lob_files_paths,
         lags,
         saving_paths.logging_file_path,
-        saving_paths.lag_mi_df_path,
+        saving_paths.lag_mi_df_final_path,
+        saving_paths.lag_mi_df_checkpoint_path,
         num_bins,
         num_files_for_checkpoint,
     )
 
     # Remove low correlated features
-    lag_mi_df_map = load_int_df(saving_paths.lag_mi_df_path)
+    lag_mi_df_map = load_int_df(saving_paths.lag_mi_df_final_path)
 
     index_lag_column_names_map = dict()
     for i, candidate_lag in enumerate(sorted(candidate_lags)):

@@ -774,6 +774,7 @@ def create_hyperparameters_yaml(experiment_id: str, args: Any) -> None:
             "patience": args.patience,
             "st_hnn_initial_lags": initial_lags_sthnn,
             "st_hnn_number_past_lags": args.st_hnn_number_past_lags,
+            "num_convolutional_channels_sthnn": args.num_convolutional_channels_sthnn,
         },
         "trading": {
             "initial_cash": args.initial_cash,

@@ -368,7 +368,6 @@ def execute_spatiotemporal_tmfg_pipeline(
         "homological_structure": homological_structure_dict,
         "original_cliques_all": original_cliques_all,
         "original_seps_all": original_seps_all,
-        "adj_matrix_all": adj_matrix_all,
         "window_index_cols_map": index_lag_not_pruned_cols_map,
     }
 

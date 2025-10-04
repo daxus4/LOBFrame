@@ -26,11 +26,7 @@ from models.LobTransformer.lobtransformer import LobTransformer
 from models.TABL.bin_tabl import BiN_BTABL, BiN_CTABL
 from models.Transformer.transformer import Transformer
 from optimizers.lightning_batch_gd import BatchGDManager
-from utils import (
-    create_tree,
-    get_training_test_stocks_as_string,
-    load_yaml_with_tuple,
-)
+from utils import create_tree, get_training_test_stocks_as_string, load_yaml_with_tuple
 
 
 class Executor:
@@ -128,6 +124,10 @@ class Executor:
                 homological_structures_dict
             )
             window_index_cols_map = homological_structures_map["window_index_cols_map"]
+            window_index_cols_map = {
+                int(k): np.array([d == "True" for d in v])
+                for k, v in window_index_cols_map.items()
+            }
             window_index_cols_map = {
                 k: np.repeat(v, 2) for k, v in window_index_cols_map.items()
             }

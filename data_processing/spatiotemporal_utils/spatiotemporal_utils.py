@@ -229,6 +229,10 @@ def get_spatiotemporal_tmfg(
         num_lags_to_select,
         saving_paths,
     )
+    index_lag_not_pruned_cols_map = {
+        int(k): [str(d) for d in v] for k, v in index_lag_not_pruned_cols_map.items()
+    }
+
     if saving_paths.spatiotemporal_matrix_path is not None:
         spatiotemporal_df.to_csv(
             saving_paths.spatiotemporal_matrix_path, sep="\t", index=True
@@ -255,7 +259,9 @@ def get_spatiotemporal_tmfg(
     connection_3 = get_cliques_connections(clique_3, clique_4)
 
     original_cliques_all = list(chain.from_iterable(cliques_all))
+    original_cliques_all = [int(c) for c in original_cliques_all]
     original_seps_all = list(chain.from_iterable(seps_all))
+    original_seps_all = [int(s) for s in original_seps_all]
 
     homological_structure = GraphHomologicalStructure(
         nodes_to_edges_connections=connection_1,

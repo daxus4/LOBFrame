@@ -31,10 +31,7 @@ class CustomWindowedDataset(CustomDataset):
         - Window 3: 5,6,7,8,9
         """
         self.windows_limits = windows_limits
-        self.last_lag = windows_limits[-1][
-            1
-        ]  # probabilmente qui va aggiunto un piu 2. pero devo controllare poi cosa succede in process_df di custom_dataset.
-        # Attenzione che forse ci sono stronzate nel codice di daniel, quindi provo a guardare anche quello di anto
+        self.last_lag = windows_limits[-1][1]
         self.window_index_cols_map = window_index_cols_map
 
         super().__init__(

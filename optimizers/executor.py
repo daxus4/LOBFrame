@@ -196,6 +196,8 @@ class Executor:
                     CustomTimeseriesDataset,
                     np._core.multiarray._reconstruct,
                     np.ndarray,
+                    np.dtype,
+                    np.dtypes.BoolDType,
                 ]
             ):
                 dataset = torch.load(
@@ -261,6 +263,8 @@ class Executor:
                     CustomTimeseriesDataset,
                     np._core.multiarray._reconstruct,
                     np.ndarray,
+                    np.dtype,
+                    np.dtypes.BoolDType,
                 ]
             ):
                 dataset = torch.load(
@@ -369,6 +373,8 @@ class Executor:
                     CustomTimeseriesDataset,
                     np._core.multiarray._reconstruct,
                     np.ndarray,
+                    np.dtype,
+                    np.dtypes.BoolDType,
                 ]
             ):
                 dataset = torch.load(

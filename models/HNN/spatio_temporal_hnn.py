@@ -37,7 +37,7 @@ class SpatioTemporalHNN(nn.Module):
         lighten: bool = False,
     ):
         super(SpatioTemporalHNN, self).__init__()
-        self.name = "hcnn"
+        self.name = "sthnn"
         if lighten:
             self.name += "-lighten"
 

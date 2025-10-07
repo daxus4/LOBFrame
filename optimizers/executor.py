@@ -190,9 +190,19 @@ class Executor:
             self.torch_dataset_preparation is False
             and self.torch_dataset_preparation_backtest is False
         ):
-            dataset = torch.load(
-                f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/{model_hyperparameters['prediction_horizon']}/{training_dataset_name}"
-            )
+            with torch.serialization.safe_globals(
+                [
+                    CustomWindowedDataset,
+                    CustomTimeseriesDataset,
+                    np._core.multiarray._reconstruct,
+                    np.ndarray,
+                ]
+            ):
+                dataset = torch.load(
+                    f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/{model_hyperparameters['prediction_horizon']}/{training_dataset_name}",
+                    weights_only=True,
+                )
+
             self.train_loader = DataLoader(
                 dataset,
                 batch_size=model_hyperparameters["batch_size"],
@@ -245,9 +255,19 @@ class Executor:
             self.torch_dataset_preparation is False
             and self.torch_dataset_preparation_backtest is False
         ):
-            dataset = torch.load(
-                f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/{model_hyperparameters['prediction_horizon']}/{validation_dataset_name}"
-            )
+            with torch.serialization.safe_globals(
+                [
+                    CustomWindowedDataset,
+                    CustomTimeseriesDataset,
+                    np._core.multiarray._reconstruct,
+                    np.ndarray,
+                ]
+            ):
+                dataset = torch.load(
+                    f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/{model_hyperparameters['prediction_horizon']}/{validation_dataset_name}",
+                    weights_only=True,
+                )
+
             self.val_loader = DataLoader(
                 dataset,
                 batch_size=model_hyperparameters["batch_size"],
@@ -343,9 +363,19 @@ class Executor:
             self.torch_dataset_preparation is False
             and self.torch_dataset_preparation_backtest is False
         ):
-            dataset = torch.load(
-                f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/{model_hyperparameters['prediction_horizon']}/{test_dataset_name}"
-            )
+            with torch.serialization.safe_globals(
+                [
+                    CustomWindowedDataset,
+                    CustomTimeseriesDataset,
+                    np._core.multiarray._reconstruct,
+                    np.ndarray,
+                ]
+            ):
+                dataset = torch.load(
+                    f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/{model_hyperparameters['prediction_horizon']}/{test_dataset_name}",
+                    weights_only=True,
+                )
+
             self.test_loader = DataLoader(
                 dataset,
                 batch_size=model_hyperparameters["batch_size"],

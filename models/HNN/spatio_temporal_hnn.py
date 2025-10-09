@@ -1,6 +1,5 @@
 from copy import deepcopy
 
-import torch
 import torch.nn as nn
 
 from models.HNN.hnn import HNN, GraphHomologicalStructure

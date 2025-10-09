@@ -1,9 +1,9 @@
 import argparse
-from collections.abc import Mapping
 import glob
 import json
 import os
 import shutil
+from collections.abc import Mapping
 from typing import Any, Dict, List, Tuple, Union
 
 import pandas as pd
@@ -679,6 +679,12 @@ def parse_args() -> Any:
         default=32,
         help="Number of convolutional channels to be used in the sthnn model.",
     )
+    parser.add_argument(
+        "--st_hnn_include_lagged_lagged_relations",
+        type=str2bool,
+        default=False,
+        help="Either or not including lagged-lagged relations in the spatiotemporal matrix creation stage.",
+    )
     # Trading hyperparameters
     parser.add_argument(
         "--initial_cash",
@@ -774,6 +780,7 @@ def create_hyperparameters_yaml(experiment_id: str, args: Any) -> None:
             "patience": args.patience,
             "st_hnn_initial_lags": initial_lags_sthnn,
             "st_hnn_number_past_lags": args.st_hnn_number_past_lags,
+            "st_hnn_include_lagged_lagged_relations": args.st_hnn_include_lagged_lagged_relations,
             "num_convolutional_channels_sthnn": args.num_convolutional_channels_sthnn,
         },
         "trading": {

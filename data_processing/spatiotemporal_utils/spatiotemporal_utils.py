@@ -219,6 +219,7 @@ def get_spatiotemporal_tmfg(
     num_bins: int,
     num_files_for_checkpoint: int,
     num_lags_to_select: int,
+    include_lagged_lagged_relations: bool,
     saving_paths: SpatiotemporalMatrixPaths,
 ) -> Tuple[GraphHomologicalStructure, List, List, np.ndarray, dict[int, np.ndarray]]:
     spatiotemporal_df, index_lag_not_pruned_cols_map = get_spatiotemporal_mi_matrix(
@@ -246,9 +247,14 @@ def get_spatiotemporal_tmfg(
         sorted(spatiotemporal_df.index, key=sort_key)
     )
 
+    if include_lagged_lagged_relations:
+        output_arg = "unweighted_sparse_W_matrix"
+    else:
+        output_arg = "weighted_sparse_W_matrix"
+
     model_all = TMFG()
     cliques_all, seps_all, adj_matrix_all = model_all.fit_transform(
-        spatiotemporal_df, output="weighted_sparse_W_matrix"
+        spatiotemporal_df, output=output_arg
     )
 
     spatiotemporal_graph = nx.from_numpy_array(adj_matrix_all)
@@ -365,6 +371,7 @@ def execute_spatiotemporal_tmfg_pipeline(
         NUM_BINS,
         NUM_FILES_FOR_CHECKPOINT,
         model_hyperparameters["st_hnn_number_past_lags"],
+        model_hyperparameters["st_hnn_include_lagged_lagged_relations"],
         saving_paths,
     )
 

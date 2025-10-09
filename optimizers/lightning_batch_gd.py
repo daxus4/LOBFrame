@@ -337,7 +337,7 @@ class BatchGDManager:
 
         except Exception as e:
             root_path = sys.path[0]
-            dir_path = f"{root_path}/loggers/results/{self.experiment_id}"
+            dir_path = f"{root_path}/loggers/results/{self.experiment_id}/wandb"
             if os.path.exists(dir_path):
                 shutil.rmtree(dir_path)
                 print(f"Folder {self.experiment_id} deleted successfully.")

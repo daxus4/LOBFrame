@@ -21,6 +21,7 @@ from models.DeepLob.deeplob import DeepLOB
 from models.DLA.DLA import DLA
 from models.HNN.hnn import GraphHomologicalStructure
 from models.HNN.spatio_temporal_hnn import SpatioTemporalHNN
+from models.HNN.spatio_temporal_hnn_full_mixing import SpatioTemporalHNNFullMixing
 from models.iTransformer.itransformer import ITransformer
 from models.LobTransformer.lobtransformer import LobTransformer
 from models.TABL.bin_tabl import BiN_BTABL, BiN_CTABL
@@ -48,7 +49,10 @@ class Executor:
             get_training_test_stocks_as_string(general_hyperparameters)
         )
 
-        spatiotemporal_executor = general_hyperparameters["model"] == "sthnn"
+        spatiotemporal_executor = general_hyperparameters["model"] in [
+            "sthnn",
+            "sthnnfm",
+        ]
         if self.torch_dataset_preparation and not spatiotemporal_executor:
             create_tree(
                 f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/{model_hyperparameters['prediction_horizon']}/"
@@ -112,7 +116,7 @@ class Executor:
                 homological_structures=homological_structures,
             )
 
-        elif general_hyperparameters["model"] == "sthnn":
+        elif general_hyperparameters["model"] in ["sthnn", "sthnnfm"]:
             homological_structures_map = load_yaml_with_tuple(
                 f"./{SAVING_FOLDER_NAME}/{self.training_stocks_string}/experiment_id_{experiment_id}/st_hnn_homological_structure.yml"
             )
@@ -135,14 +139,24 @@ class Executor:
                 f"./{SAVING_FOLDER_NAME}/{self.training_stocks_string}/experiment_id_{experiment_id}/{INTERMEDIATE_FILES_SUBFOLDER_NAME}/interval_lags.yml"
             )
 
-            self.model = SpatioTemporalHNN(
-                homological_structure=homological_structures,
-                num_convolutional_channels=model_hyperparameters[
-                    "num_convolutional_channels_sthnn"
-                ],
-                lighten=model_hyperparameters["lighten"],
-                num_classes=len(general_hyperparameters["targets_type"]),
-            )
+            if general_hyperparameters["model"] == "sthnnfm":
+                self.model = SpatioTemporalHNNFullMixing(
+                    homological_structure=homological_structures,
+                    num_convolutional_channels=model_hyperparameters[
+                        "num_convolutional_channels_sthnn"
+                    ],
+                    lighten=model_hyperparameters["lighten"],
+                    num_classes=len(general_hyperparameters["targets_type"]),
+                )
+            else:
+                self.model = SpatioTemporalHNN(
+                    homological_structure=homological_structures,
+                    num_convolutional_channels=model_hyperparameters[
+                        "num_convolutional_channels_sthnn"
+                    ],
+                    lighten=model_hyperparameters["lighten"],
+                    num_classes=len(general_hyperparameters["targets_type"]),
+                )
 
         if self.torch_dataset_preparation:
             # Prepare the training dataloader.

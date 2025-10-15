@@ -454,7 +454,7 @@ def get_best_levels_prices_and_labels(
 
     # Discretize the labels (0: downtrend, 1: no trend, 2: uptrend).
     all_labels = [
-        2 if label >= threshold else 0 if label <= -threshold else 1
+        2 if label > threshold else 0 if label < -threshold else 1
         for label in all_labels_temp
     ]
 

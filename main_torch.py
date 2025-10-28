@@ -1,9 +1,17 @@
+import torch
 from loggers import logger
 from optimizers.executor import Executor
 from simulator import market_sim, post_trading_analysis
 from utils import is_hyperparams_yaml_existing, load_yaml, parse_args, save_dataset_info
+import numpy as np
+import random
 
 if __name__ == "__main__":
+    SEED = 4444
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    random.seed(SEED)
+
     # Parse input arguments.
     args = parse_args()
     wb_error_detection = False
@@ -27,6 +35,7 @@ if __name__ == "__main__":
     trading_hyperparameters = load_yaml(hyperparameters_path, "trading")
 
     general_hyperparameters["stages"] = args.stages.split(",")
+    print(general_hyperparameters["stages"])
 
     # Instantiate the executor as None.
     executor = None
@@ -53,11 +62,13 @@ if __name__ == "__main__":
         "training" in general_hyperparameters["stages"]
         or "evaluation" in general_hyperparameters["stages"]
     ):
+        print("Initializing Executor for training/evaluation...")
         executor = Executor(
             experiment_id, general_hyperparameters, model_hyperparameters
         )
 
     if "training" in general_hyperparameters["stages"]:
+        print("Starting training stage...")
         try:
             # Keep track of the files used in the training, validation and test sets.
             save_dataset_info(
@@ -68,8 +79,8 @@ if __name__ == "__main__":
             executor.execute_training()
             # Clean up the experiment folder from wandb logging files.
             executor.logger_clean_up()
-        except:
-            print("Exception detected")
+        except Exception as e:
+            print("Exception detected:", e)
             wb_error_detection = True
 
     if (

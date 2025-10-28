@@ -3,12 +3,10 @@ import glob
 from itertools import chain
 from typing import *
 
-import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
 import polars as pl
-import seaborn as sns
 import torch
 from fast_tmfg import *
 from sklearn.metrics import mutual_info_score

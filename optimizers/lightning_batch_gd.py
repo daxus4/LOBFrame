@@ -262,7 +262,7 @@ class BatchGDManager:
 
     def delete_run(self):
         api = wandb.Api()
-        project_path = "PROVA"  # TODO: Specify here the name of WB project.
+        project_path = "HCNN"  # TODO: Specify here the name of WB project.
         runs = api.runs(path=project_path)
         print("Deleting runs...")
         while len(runs) < 1:
@@ -315,7 +315,7 @@ class BatchGDManager:
         os.environ["WANDB__SERVICE_WAIT"] = "300"
         try:
             wandb_logger = WandbLogger(
-                project="Limit_Order_Book",
+                project="HCNN",
                 name=self.experiment_id,
                 save_dir=logger.find_save_path(self.experiment_id),
             )

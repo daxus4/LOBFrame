@@ -108,7 +108,8 @@ class Executor:
             self.model = AxialLOB()
         elif general_hyperparameters["model"] == "hlob":
             homological_structures = torch.load(
-                f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/complete_homological_structures.pt"
+                f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{self.training_stocks_string}_test_{self.test_stocks_string}/complete_homological_structures.pt",
+                weights_only=False,
             )
 
             self.model = Complete_HCNN(

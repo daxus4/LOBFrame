@@ -9,6 +9,8 @@ from sklearn.preprocessing import LabelBinarizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from loaders.custom_timeserie_dataset import CustomTimeseriesDataset
+from loaders.custom_windowed_dataset import CustomWindowedDataset
 from loggers import logger
 from utils import get_training_test_stocks_as_string
 
@@ -86,9 +88,20 @@ def post_trading_analysis(
         if general_hyperparameters["model"] == "sthnn"
         else "test_dataset_backtest.pt"
     )
-    dataset = torch.load(
-        f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{training_stocks_string}_test_{test_stocks_string}/{model_hyperparameters['prediction_horizon']}/{test_dataset_backtest_name}"
-    )
+    with torch.serialization.safe_globals(
+        [
+            CustomWindowedDataset,
+            CustomTimeseriesDataset,
+            np._core.multiarray._reconstruct,
+            np.ndarray,
+            np.dtype,
+            np.dtypes.BoolDType,
+        ]
+    ):
+        dataset = torch.load(
+            f"./torch_datasets/threshold_{model_hyperparameters['threshold']}/batch_size_{model_hyperparameters['batch_size']}/training_{training_stocks_string}_test_{test_stocks_string}/{model_hyperparameters['prediction_horizon']}/{test_dataset_backtest_name}",
+            weights_only=True,
+        )
     print(f"Reading test (backtest version) dataset...")
     test_loader = DataLoader(
         dataset,

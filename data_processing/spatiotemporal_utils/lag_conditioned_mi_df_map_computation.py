@@ -20,14 +20,15 @@ Usage example:
 """
 
 from __future__ import annotations
+
 import argparse
+import glob
 import logging
 import os
 import sys
-import glob
 import traceback
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -97,11 +98,66 @@ class IOHandler:
         safe = str(class_value).replace("/", "_")
         return os.path.join(self.output_folder, f"mi_{safe}_lag_{lag}.npz")
 
+    def save_mi_matrix(
+        self,
+        class_value: int,
+        lag: int,
+        mi_matrix: np.ndarray,
+        row_names: List[str],
+        col_names: List[str],
+        num_files: int,
+    ):
+        out_path = self.result_path(class_value, lag)
+
+        meta = {
+            "row_names": row_names,
+            "col_names": col_names,
+            "lag": lag,
+            "class": class_value,
+            "num_files": num_files,
+        }
+        np.savez_compressed(out_path, mi_matrix=mi_matrix, meta=meta)
+        self.logger.info(f"Saved MI matrix: class={class_value} lag={lag} → {out_path}")
+
+    @staticmethod
+    def get_class_lag_mi_matrices_map(
+        folder: str,
+    ) -> Dict[int, Dict[int, pd.DataFrame]]:
+        temp_dict = {}
+
+        pattern = os.path.join(folder, "*.npz")
+        files = glob.glob(pattern)
+
+        for fp in files:
+            data = np.load(fp, allow_pickle=True)
+            mi_matrix = data["mi_matrix"]
+            meta = data["meta"].item()
+
+            cls = int(meta["class"])
+            lag = int(meta["lag"])
+            row_names = meta["row_names"]
+            col_names = meta["col_names"]
+
+            df = pd.DataFrame(mi_matrix, index=row_names, columns=col_names)
+
+            if cls not in temp_dict:
+                temp_dict[cls] = {}
+            temp_dict[cls][lag] = df
+
+        mi_dict = {
+            cls: {lag: temp_dict[cls][lag] for lag in sorted(temp_dict[cls])}
+            for cls in sorted(temp_dict)
+        }
+
+        return mi_dict
+
 
 # ---------------------------------------------------------------------
 # Data Preparation
 # ---------------------------------------------------------------------
 class DataProcessor:
+    classes = [0, 1, 2]
+
     def __init__(
         self, df: pd.DataFrame, return_col: str, threshold: float, bins_number: int
     ):
@@ -112,7 +168,7 @@ class DataProcessor:
         self.size_columns = self.get_size_columns()
 
     def filter_useless_columns(self):
-        self.df = self.df[self.size_columns + [self.return_col]]
+        self.df = self.df[self.size_columns + [self.return_col]].copy()
         return self
 
     def bin_size_columns(self):
@@ -152,10 +208,6 @@ class DataProcessor:
 class MIComputer:
     logger: logging.Logger = field(default=logging.getLogger("mi_lagged"))
 
-    def _mi_single(self, x: np.ndarray, y: np.ndarray) -> float:
-        X = x.reshape(-1, 1)
-        return mutual_info_score(X, y)
-
     def pairwise_mi(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
         N = X.shape[1]
         M = Y.shape[1]
@@ -165,7 +217,7 @@ class MIComputer:
             row = np.zeros(N)
             for i in range(N):
                 try:
-                    row[i] = self._mi_single(X[:, i], y)
+                    row[i] = mutual_info_score(X[:, i], y)
                 except Exception as e:
                     self.logger.exception("MI error (%d,%d): %s", i, j, e)
                     row[i] = np.nan
@@ -227,55 +279,47 @@ class JobManager:
             out[f"{c}_lag"] = Xlag_vals[valid, i]
         return out, feature_cols
 
-    # -----------------------------------------------------------
-    # Aggregate all (X_t,X_{t+lag}) pairs per class across files
-    # -----------------------------------------------------------
-    def aggregate_pairs(
-        self, files: List[str], lag: int
-    ) -> Dict[str, Dict[str, np.ndarray]]:
-        class_groups: Dict[str, Dict[str, list]] = {}
-        feature_cols: Optional[List[str]] = None
+    def compute_mi_for_file(
+        self, path: str, lag: int
+    ) -> Dict[str, tuple[np.ndarray, List[str]]]:
+        """Returns: dict[class] = (MI_matrix, feature_cols) computed from THIS file only."""
+        try:
+            df = self.io.load_dataframe(path)
+        except Exception as e:
+            self.logger.exception("Skipping %s: load error %s", path, e)
+            return {}
 
-        for path in files:
-            try:
-                df = self.io.load_dataframe(path)
+        df = (
+            DataProcessor(df, self.io.class_column, self.threshold, self.bins_number)
+            .filter_useless_columns()
+            .bin_size_columns()
+            .classify_return_column()
+            .get()
+        )
 
-            except Exception as e:
-                self.logger.exception("Skipping %s: load error %s", path, e)
-                continue
-
-            df = (
-                DataProcessor(
-                    df, self.io.class_column, self.threshold, self.bins_number
-                )
-                .filter_useless_columns()
-                .bin_size_columns()
-                .classify_return_column()
-                .get()
-            )
-
-            try:
-                pairs, cols = self.build_pairs_for_file(df, lag)
-            except Exception as e:
-                self.logger.exception("Skipping %s: pair-build error %s", path, e)
-                continue
-
-            if feature_cols is None:
-                feature_cols = cols
-
-            for cls_val, grp in pairs.groupby("class"):
-                entry = class_groups.setdefault(str(cls_val), {"X": [], "Y": []})
-                # X_t columns
-                X = grp[[f"{c}_t" for c in feature_cols]].values
-                Y = grp[[f"{c}_lag" for c in feature_cols]].values
-                entry["X"].append(X)
-                entry["Y"].append(Y)
+        try:
+            pairs, feature_cols = self.build_pairs_for_file(df, lag)
+        except Exception as e:
+            self.logger.exception("Skipping %s: pair-build error %s", path, e)
+            return {}
 
         out = {}
-        for cls, data in class_groups.items():
-            X = np.vstack(data["X"]) if data["X"] else np.zeros((0, len(feature_cols)))
-            Y = np.vstack(data["Y"]) if data["Y"] else np.zeros((0, len(feature_cols)))
-            out[cls] = {"X": X, "Y": Y, "cols": feature_cols}
+        for cls_val, grp in pairs.groupby("class"):
+            X = grp[[f"{c}_t" for c in feature_cols]].values
+            Y = grp[[f"{c}_lag" for c in feature_cols]].values
+
+            if len(X) == 0:
+                continue
+
+            # compute MI for THIS file/THIS class only
+            try:
+                M = self.mi.pairwise_mi(X, Y)
+                out[cls_val] = (M, feature_cols)
+            except Exception as e:
+                self.logger.exception(
+                    "Error computing MI for %s class=%s", path, cls_val
+                )
+
         return out
 
     # -----------------------------------------------------------
@@ -295,31 +339,61 @@ class JobManager:
 
     def _process_lag(self, lag: int, files: List[str]):
         self.logger.info(f"Processing lag = {lag}")
-        groups = self.aggregate_pairs(files, lag)
 
-        for cls, data in groups.items():
+        # Track: class → running average MI + count
+        running = {}
+        counts = {}
+        feature_cols = None
+
+        classes_to_skip = set()
+        for cls in DataProcessor.classes:
             out_path = self.io.result_path(cls, lag)
             if os.path.exists(out_path):
-                self.logger.info(f"Skipping class={cls} lag={lag}, already exists.")
-                continue
-
-            X = data["X"]
-            Y = data["Y"]
-            cols = data["cols"]
-
-            self.logger.info(f"Class={cls}, lag={lag}, samples={X.shape[0]}")
-            if X.shape[0] < 5:
-                self.logger.warning(f"Too few samples for class={cls} lag={lag}")
-
-            try:
-                mi_matrix = self.mi.pairwise_mi(X, Y)
-                meta = {"columns": cols, "lag": lag, "num_samples": X.shape[0]}
-                np.savez_compressed(out_path, mi_matrix=mi_matrix, meta=meta)
-                self.logger.info(f"Saved: {out_path}")
-            except Exception as e:
-                self.logger.exception(
-                    f"Failed computing MI for class={cls} lag={lag}: {e}"
+                self.logger.info(
+                    f"[SKIP] class={cls} lag={lag} already completed → {out_path}"
                 )
+                classes_to_skip.add(cls)
+
+        if len(classes_to_skip) == len(DataProcessor.classes):
+            self.logger.info(
+                f"All classes completed for lag={lag}. Skipping entire lag."
+            )
+            return
+
+        # --- Now process files ---
+        for path in files:
+            self.logger.info(f"File: {path}")
+
+            # Compute MI for this file (class → (mi_matrix, cols))
+            result = self.compute_mi_for_file(path, lag)
+
+            for cls, (M_new, cols) in result.items():
+                if feature_cols is None:
+                    feature_cols = cols
+
+                # Running average
+                if cls not in running:
+                    running[cls] = M_new.astype(float)
+                    counts[cls] = 1
+                else:
+                    k = counts[cls] + 1
+                    M_old = running[cls]
+                    running[cls] = M_old + (M_new - M_old) / k
+                    counts[cls] = k
+
+        # --- Save only classes that were computed now ---
+        row_names = [f"{c}_lag0" for c in feature_cols]
+        col_names = [f"{c}_lag{lag}" for c in feature_cols]
+
+        for cls, M_avg in running.items():
+            self.io.save_mi_matrix(
+                class_value=cls,
+                lag=lag,
+                mi_matrix=M_avg,
+                row_names=row_names,
+                col_names=col_names,
+                num_files=counts[cls],
+            )
 
 
 # ---------------------------------------------------------------------
@@ -329,18 +403,14 @@ class JobManager:
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--input-folder", required=True)
-    p.add_argument("--output-folder", required=True)
-    p.add_argument("--class-column", required=True)
+    p.add_argument("--input_folder", required=True)
+    p.add_argument("--output_folder", required=True)
+    p.add_argument("--class_column", required=True)
     p.add_argument("--lags", nargs="+", type=int, required=True)
-    p.add_argument(
-        "--estimator", choices=["regression", "classification"], default="regression"
-    )
-    p.add_argument("--n-neighbors", type=int, default=3)
-    p.add_argument("--n-jobs", type=int, default=4)
-    p.add_argument("--log-file", default="mi_lagged.log")
+    p.add_argument("--n_jobs", type=int, default=4)
+    p.add_argument("--log_file", default="mi_lagged.log")
     p.add_argument("--threshold", type=float, default=99)
-    p.add_argument("--bins-number", type=int, default=3000)
+    p.add_argument("--bins_number", type=int, default=3000)
     return p.parse_args()
 
 

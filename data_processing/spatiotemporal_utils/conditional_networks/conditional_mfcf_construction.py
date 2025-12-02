@@ -1,7 +1,12 @@
+import argparse
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List
+
+import networkx as nx
 import numpy as np
 import pandas as pd
-from typing import Dict, List
-from dataclasses import dataclass
+
 from data_processing.spatiotemporal_utils.conditional_networks.fast_fast_mfcf import (
     MFCF,
     Clique,
@@ -9,10 +14,6 @@ from data_processing.spatiotemporal_utils.conditional_networks.fast_fast_mfcf im
 from data_processing.spatiotemporal_utils.conditional_networks.lag_conditioned_mi_df_map_computation import (
     IOHandler,
 )
-import networkx as nx
-from typing import List
-import argparse
-from pathlib import Path
 
 
 @dataclass
@@ -79,7 +80,9 @@ class MCFCSparsifier:
         cliques, separators_count, peo, J_logo = self.mfcf.run(similarity_matrix.values)
 
         graph = self.node_graph_from_cliques(cliques)
-        sparse_adj = nx.to_numpy_array(graph, nodelist=similarity_matrix.index)
+        sparse_adj = nx.to_numpy_array(
+            graph, nodelist=range(len(similarity_matrix.index))
+        )
         sparse_adj = pd.DataFrame(
             sparse_adj, index=similarity_matrix.index, columns=similarity_matrix.columns
         )

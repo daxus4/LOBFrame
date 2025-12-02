@@ -508,7 +508,7 @@ class MFCF:
         C1[r, c] = 0
         sums = C1.sum(axis=0)
         cand = np.argsort(-sums, kind="stable")
-        return frozenset(cand[: (self._min_clique_size - 1)])
+        return frozenset([int(c) for c in cand[: (self._min_clique_size - 1)]])
 
     # -------------------------------------------------------------------------
     # Main algorithm loop

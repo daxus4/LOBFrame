@@ -41,6 +41,8 @@ from sklearn.metrics import mutual_info_score
 
 
 def setup_logger(log_path: str, level=logging.INFO) -> logging.Logger:
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
     logger = logging.getLogger("mi_lagged")
     logger.setLevel(level)
     if not logger.handlers:
@@ -385,15 +387,20 @@ class JobManager:
         row_names = [f"{c}_lag0" for c in feature_cols]
         col_names = [f"{c}_lag{lag}" for c in feature_cols]
 
-        for cls, M_avg in running.items():
-            self.io.save_mi_matrix(
-                class_value=cls,
-                lag=lag,
-                mi_matrix=M_avg,
-                row_names=row_names,
-                col_names=col_names,
-                num_files=counts[cls],
-            )
+        print("Saving results for lag =", lag)
+
+        try:
+            for cls, M_avg in running.items():
+                self.io.save_mi_matrix(
+                    class_value=cls,
+                    lag=lag,
+                    mi_matrix=M_avg,
+                    row_names=row_names,
+                    col_names=col_names,
+                    num_files=counts[cls],
+                )
+        except Exception as e:
+            self.logger.exception(f"Error saving results for lag={lag}: {e}")
 
 
 # ---------------------------------------------------------------------
@@ -401,12 +408,33 @@ class JobManager:
 # ---------------------------------------------------------------------
 
 
+def parse_lags(values):
+    """
+    Accepts:
+      --lags 0 1 2 5
+      --lags 0-10
+      --lags 0-5 10-12 20 30-32
+    Returns a sorted unique list of integers.
+    """
+    out = set()
+
+    for v in values:
+        if "-" in v:
+            start, end = v.split("-")
+            start, end = int(start), int(end)
+            out.update(range(start, end + 1))
+        else:
+            out.add(int(v))
+
+    return sorted(out)
+
+
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--input_folder", required=True)
     p.add_argument("--output_folder", required=True)
     p.add_argument("--class_column", required=True)
-    p.add_argument("--lags", nargs="+", type=int, required=True)
+    p.add_argument("--lags", nargs="+", required=True, help="E.g., 0 1 2 or 0-10")
     p.add_argument("--n_jobs", type=int, default=4)
     p.add_argument("--log_file", default="mi_lagged.log")
     p.add_argument("--threshold", type=float, default=99)
@@ -416,6 +444,8 @@ def parse_args():
 
 def main():
     args = parse_args()
+    args.lags = parse_lags(args.lags)
+
     logger = setup_logger(args.log_file)
 
     io = IOHandler(args.input_folder, args.output_folder, args.class_column, logger)

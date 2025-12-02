@@ -33,26 +33,25 @@ class SpatiotemporalMatrixBuilder:
         # Build index labels directly from the DF names
         index_labels = []
         for lag in lags:
-            index_labels.extend(mi_dict_for_class[lag].index.tolist())
+            index_labels.extend(mi_dict_for_class[lag].columns.tolist())
 
         size = n_lags * n_features
         big = np.zeros((size, size))
 
         # Single loop, fill block rows
+        c0 = size - n_features
+        c1 = size
+
         for block_i, lag in enumerate(lags):
             mat = mi_dict_for_class[lag].values
             r0 = block_i * n_features
             r1 = r0 + n_features
 
-            for block_j in range(block_i + 1):
-                c0 = block_j * n_features
-                c1 = c0 + n_features
-
-                if block_i == block_j:
-                    big[r0:r1, c0:c1] = mat
-                else:
-                    big[r0:r1, c0:c1] = mat
-                    big[c0:c1, r0:r1] = mat.T
+            if lag == 0:
+                big[r0:r1, c0:c1] = mat
+            else:
+                big[r0:r1, c0:c1] = mat
+                big[c0:c1, r0:r1] = mat.T
 
         return pd.DataFrame(big, index=index_labels, columns=index_labels)
 

@@ -201,11 +201,11 @@ if __name__ == "__main__":
         class_lag_mi_matrices_map
     )
 
-    if not args.output_path.parent.exists():
-        args.output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not args.output_folder.exists():
+        args.output_folder.mkdir(parents=True, exist_ok=True)
 
     final_adjacency_matrix.to_csv(
-        args.output_path / "final_adjacency_matrix.tsv",
+        args.output_folder / "final_adjacency_matrix.tsv",
         index=True,
         header=True,
         sep="\t",
@@ -213,7 +213,7 @@ if __name__ == "__main__":
 
     for cls, adj_matrix in conditional_adjancency_matrices_map.items():
         adj_matrix.to_csv(
-            args.output_path / f"conditional_adjacency_matrix_class_{cls}.tsv",
+            args.output_folder / f"conditional_adjacency_matrix_class_{cls}.tsv",
             index=True,
             header=True,
             sep="\t",

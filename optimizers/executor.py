@@ -3,6 +3,7 @@ import pickle
 import shutil
 
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
@@ -24,6 +25,8 @@ from models.HNN.spatio_temporal_hnn import SpatioTemporalHNN
 from models.HNN.spatio_temporal_hnn_full_mixing import SpatioTemporalHNNFullMixing
 from models.iTransformer.itransformer import ITransformer
 from models.LobTransformer.lobtransformer import LobTransformer
+from models.simple_hnn.simple_hnn_builder import build_simple_hnn_from_adjacency
+from models.simple_hnn.simple_st_hnn import SimpleSTHNN
 from models.TABL.bin_tabl import BiN_BTABL, BiN_CTABL
 from models.Transformer.transformer import Transformer
 from optimizers.lightning_batch_gd import BatchGDManager
@@ -48,6 +51,10 @@ class Executor:
         self.training_stocks_string, self.test_stocks_string = (
             get_training_test_stocks_as_string(general_hyperparameters)
         )
+
+        # TODO: remove it
+        end_excluded_interval_windows = []
+        window_index_cols_map = {}
 
         spatiotemporal_executor = general_hyperparameters["model"] in [
             "sthnn",
@@ -118,46 +125,24 @@ class Executor:
             )
 
         elif general_hyperparameters["model"] in ["sthnn", "sthnnfm"]:
-            homological_structures_map = load_yaml_with_tuple(
-                f"./{SAVING_FOLDER_NAME}/{self.training_stocks_string}/experiment_id_{experiment_id}/st_hnn_homological_structure.yml"
+            st_adjacency_matrix_path = f"./{SAVING_FOLDER_NAME}/{self.training_stocks_string}/conditional_networks/adjacency_matrix/final_adjacency_matrix.tsv"
+            st_adjacency_matrix = pd.read_csv(
+                st_adjacency_matrix_path,
+                sep="\t",
+                header=None,
+                dtype=np.float32,
+            ).values
+            simple_hnn = build_simple_hnn_from_adjacency(
+                st_adjacency_matrix, device="cuda"
             )
 
-            homological_structures_dict = homological_structures_map[
-                "homological_structure"
-            ]
-            homological_structures = GraphHomologicalStructure.from_dict(
-                homological_structures_dict
+            self.model = SimpleSTHNN(
+                hnn=simple_hnn,
+                num_convolutional_channels=model_hyperparameters[
+                    "num_convolutional_channels"
+                ],
+                lighten=model_hyperparameters["lighten"],
             )
-            window_index_cols_map = homological_structures_map["window_index_cols_map"]
-            window_index_cols_map = {
-                int(k): np.array([d == "True" for d in v])
-                for k, v in window_index_cols_map.items()
-            }
-            window_index_cols_map = {
-                k: np.repeat(v, 2) for k, v in window_index_cols_map.items()
-            }
-            end_excluded_interval_windows = load_yaml_with_tuple(
-                f"./{SAVING_FOLDER_NAME}/{self.training_stocks_string}/experiment_id_{experiment_id}/{INTERMEDIATE_FILES_SUBFOLDER_NAME}/interval_lags.yml"
-            )
-
-            if general_hyperparameters["model"] == "sthnnfm":
-                self.model = SpatioTemporalHNNFullMixing(
-                    homological_structure=homological_structures,
-                    num_convolutional_channels=model_hyperparameters[
-                        "num_convolutional_channels_sthnn"
-                    ],
-                    lighten=model_hyperparameters["lighten"],
-                    num_classes=len(general_hyperparameters["targets_type"]),
-                )
-            else:
-                self.model = SpatioTemporalHNN(
-                    homological_structure=homological_structures,
-                    num_convolutional_channels=model_hyperparameters[
-                        "num_convolutional_channels_sthnn"
-                    ],
-                    lighten=model_hyperparameters["lighten"],
-                    num_classes=len(general_hyperparameters["targets_type"]),
-                )
 
         if self.torch_dataset_preparation:
             # Prepare the training dataloader.
